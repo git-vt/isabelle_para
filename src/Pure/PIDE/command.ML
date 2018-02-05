@@ -10,7 +10,7 @@ sig
   val read_file: Path.T -> Position.T -> Path.T -> Token.file
   val read_thy: Toplevel.state -> theory
   val read: Keyword.keywords -> theory -> Path.T-> (unit -> theory) ->
-    blob list * int -> Token.T list -> Toplevel.transition
+    blob list * int -> Token.T list -> Toplevel.transitions
   type eval
   val eval_exec_id: eval -> Document_ID.exec
   val eval_eq: eval * eval -> bool
@@ -154,14 +154,14 @@ end;
 
 (* eval *)
 
-type eval_state = {failed: bool, command: Toplevel.transition, state: Toplevel.state};
+type 'a eval_state = {failed: bool, command: 'a, state: Toplevel.state};
 
 fun init_eval_state opt_thy =
  {failed = false,
-  command = Toplevel.empty,
+  command = [],
   state = (case opt_thy of NONE => Toplevel.toplevel | SOME thy => Toplevel.theory_toplevel thy)};
 
-datatype eval = Eval of {exec_id: Document_ID.exec, eval_process: eval_state lazy};
+datatype eval = Eval of {exec_id: Document_ID.exec, eval_process: Toplevel.transitions eval_state lazy};
 
 fun eval_exec_id (Eval {exec_id, ...}) = exec_id;
 val eval_eq = op = o apply2 eval_exec_id;
@@ -225,7 +225,7 @@ fun command_indent tr st =
   | NONE => ());
 
 
-fun eval_state keywords span tr ({state, ...}: eval_state) =
+fun eval_state' keywords span tr state =
   let
     val _ = Thread_Attributes.expose_interrupt ();
 
@@ -250,6 +250,16 @@ fun eval_state keywords span tr ({state, ...}: eval_state) =
           val _ = status tr Markup.finished;
         in {failed = false, command = tr, state = st'} end)
   end;
+
+fun eval_state keywords span l_tr ({state, ...}: Toplevel.transitions eval_state) =
+  let val (command, (failed, state)) =
+        fold_map (fn tr => fn (failed, state) =>
+                    let val result = eval_state' keywords span tr state in
+                      (#command result, (failed orelse #failed result, #state result))
+                    end)
+                 l_tr
+                 (false, state)
+  in {failed = failed, command = command, state = state} end;
 
 in
 
@@ -318,7 +328,7 @@ fun print command_visible command_overlays keywords command_name eval old_prints
             val opt_context = try Toplevel.generic_theory_of st';
           in
             if failed andalso strict then ()
-            else print_error tr opt_context (fn () => print_fn tr st')
+            else List.app (fn tr => print_error tr opt_context (fn () => print_fn tr st')) tr
           end;
       in
         Print {
