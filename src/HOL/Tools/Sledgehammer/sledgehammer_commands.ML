@@ -291,7 +291,7 @@ val silence_state =
 
 val default_learn_prover_timeout = 2.0
 
-fun hammer_away override_params writeln_result subcommand opt_i fact_override state0 =
+fun hammer_away hammer_first override_params writeln_result subcommand opt_i fact_override state0 =
   let
     (* We generally want chained facts to be picked up by the relevance filter, because it can then
        give it a proper name, which is useful for a variety of reasons (minimization, Isar proofs,
@@ -318,7 +318,7 @@ fun hammer_away override_params writeln_result subcommand opt_i fact_override st
   in
     if subcommand = runN then
       let val i = the_default 1 opt_i in
-        ignore (run_sledgehammer
+        ignore (run_sledgehammer hammer_first
           (get_params Normal thy override_params) Normal writeln_result i fact_override state)
       end
     else if subcommand = supported_proversN then
@@ -361,14 +361,21 @@ val parse_fact_override =
   Scan.optional (Args.parens (Scan.repeat parse_fact_override_chunk >> merge_fact_overrides))
     no_fact_override
 
+val sledgehammer_parse = Scan.optional Parse.name runN -- parse_params
+                                -- parse_fact_override -- Scan.option Parse.nat
+fun sledgehammer hammer_first (((subcommand, params), fact_override), opt_i) =
+  Toplevel.keep_proof
+    (hammer_away hammer_first params NONE subcommand opt_i fact_override o Toplevel.proof_of)
+val sledgehammer_first = sledgehammer true
+
 val _ =
   Outer_Syntax.command @{command_keyword sledgehammer}
     "search for first-order proof using automatic theorem provers"
-    (Scan.optional Parse.name runN -- parse_params
-      -- parse_fact_override -- Scan.option Parse.nat >>
-      (fn (((subcommand, params), fact_override), opt_i) =>
-        Toplevel.keep_proof
-          (hammer_away params NONE subcommand opt_i fact_override o Toplevel.proof_of)))
+    (sledgehammer_parse >> sledgehammer false)
+val _ =
+  Outer_Syntax.command @{command_keyword sledgehammer_first}
+    "search for first-order proof using automatic theorem provers and stop on first answer"
+    (sledgehammer_parse >> sledgehammer_first)
 val _ =
   Outer_Syntax.command @{command_keyword sledgehammer_params}
     "set and display the default parameters for Sledgehammer"
@@ -385,7 +392,7 @@ fun try_sledgehammer auto state =
     val mode = if auto then Auto_Try else Try
     val i = 1
   in
-    run_sledgehammer (get_params mode thy []) mode NONE i no_fact_override (silence_state state)
+    run_sledgehammer false (get_params mode thy []) mode NONE i no_fact_override (silence_state state)
   end
 
 val _ = Try.tool_setup (sledgehammerN, (40, @{system_option auto_sledgehammer}, try_sledgehammer))
@@ -404,7 +411,7 @@ val _ =
                  ("debug", ["false"]),
                  ("verbose", ["false"]),
                  ("overlord", ["false"])]);
-          in hammer_away override_params (SOME writeln_result) runN NONE no_fact_override state end
+          in hammer_away false override_params (SOME writeln_result) runN NONE no_fact_override state end
       | NONE => error "Unknown proof context"))
 
 end;
