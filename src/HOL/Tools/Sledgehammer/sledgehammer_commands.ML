@@ -291,7 +291,7 @@ val silence_state =
 
 val default_learn_prover_timeout = 2.0
 
-fun hammer_away hammer_first override_params writeln_result subcommand opt_i fact_override state0 =
+fun hammer_away hammer_first pos_goal override_params writeln_result subcommand opt_i fact_override state0 =
   let
     (* We generally want chained facts to be picked up by the relevance filter, because it can then
        give it a proper name, which is useful for a variety of reasons (minimization, Isar proofs,
@@ -317,9 +317,10 @@ fun hammer_away hammer_first override_params writeln_result subcommand opt_i fac
     val override_params = override_params |> map (normalize_raw_param ctxt)
   in
     if subcommand = runN then
-      let val i = the_default 1 opt_i in
-        ignore (run_sledgehammer hammer_first
-          (get_params Normal thy override_params) Normal writeln_result i fact_override state)
+      let val i = the_default 1 opt_i
+          val (b, (s, _)) = run_sledgehammer hammer_first pos_goal
+            (get_params Normal thy override_params) Normal writeln_result i fact_override state in
+        if b then () else writeln (Markup.markup (Markup.bad ()) ("Proof status" ^ string_of_subgoal pos_goal ^ ": " ^ s))
       end
     else if subcommand = supported_proversN then
       supported_provers ctxt
@@ -363,19 +364,27 @@ val parse_fact_override =
 
 val sledgehammer_parse = Scan.optional Parse.name runN -- parse_params
                                 -- parse_fact_override -- Scan.option Parse.nat
-fun sledgehammer hammer_first (((subcommand, params), fact_override), opt_i) =
+fun sledgehammer hammer_first pos_goal (((subcommand, params), fact_override), opt_i) =
   Toplevel.keep_proof
-    (hammer_away hammer_first params NONE subcommand opt_i fact_override o Toplevel.proof_of)
+    (hammer_away hammer_first pos_goal params NONE subcommand opt_i fact_override o Toplevel.proof_of)
 val sledgehammer_first = sledgehammer true
 
 val _ =
   Outer_Syntax.command @{command_keyword sledgehammer}
     "search for first-order proof using automatic theorem provers"
-    (sledgehammer_parse >> sledgehammer false)
+    (sledgehammer_parse >> sledgehammer false NONE)
 val _ =
   Outer_Syntax.command @{command_keyword sledgehammer_first}
     "search for first-order proof using automatic theorem provers and stop on first answer"
-    (sledgehammer_parse >> sledgehammer_first)
+    (sledgehammer_parse >> sledgehammer_first NONE)
+val _ =
+  Outer_Syntax.commands @{command_keyword sledgehammer_all}
+    "search for first-order proof using automatic theorem provers on first subgoals in parallel"
+    (sledgehammer_parse --| Parse.$$$ "\<rightleftharpoons>" -- Parse.nat >> (fn (p, n_goal) =>
+       n_goal |> map_range (fn i =>
+                  [ (@{command_keyword prefer}, (Toplevel.proof o Proof.prefer) n_goal)
+                  , (@{command_keyword sledgehammer_first}, sledgehammer_first (SOME (n_goal - i)) p) ])
+              |> List.concat))
 val _ =
   Outer_Syntax.command @{command_keyword sledgehammer_params}
     "set and display the default parameters for Sledgehammer"
@@ -392,7 +401,7 @@ fun try_sledgehammer auto state =
     val mode = if auto then Auto_Try else Try
     val i = 1
   in
-    run_sledgehammer false (get_params mode thy []) mode NONE i no_fact_override (silence_state state)
+    run_sledgehammer false NONE (get_params mode thy []) mode NONE i no_fact_override (silence_state state)
   end
 
 val _ = Try.tool_setup (sledgehammerN, (40, @{system_option auto_sledgehammer}, try_sledgehammer))
@@ -411,7 +420,7 @@ val _ =
                  ("debug", ["false"]),
                  ("verbose", ["false"]),
                  ("overlord", ["false"])]);
-          in hammer_away false override_params (SOME writeln_result) runN NONE no_fact_override state end
+          in hammer_away false NONE override_params (SOME writeln_result) runN NONE no_fact_override state end
       | NONE => error "Unknown proof context"))
 
 end;

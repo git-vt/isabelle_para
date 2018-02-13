@@ -9,7 +9,7 @@ section \<open>Sledgehammer: Isabelle--ATP Linkup\<close>
 theory Sledgehammer
 imports Presburger SMT
 keywords
-  "sledgehammer" "sledgehammer_first" :: diag and
+  "sledgehammer" "sledgehammer_first" "sledgehammer_all" :: diag and
   "sledgehammer_params" :: thy_decl
 begin
 
