@@ -41,7 +41,9 @@ sig
      minimize : bool,
      timeout : Time.time,
      preplay_timeout : Time.time,
-     expect : string}
+     expect : string,
+     stop_on_first : bool,
+     para_first_subgoals : int option}
 
   type prover_problem =
     {comment : string,
@@ -126,7 +128,9 @@ type params =
    minimize : bool,
    timeout : Time.time,
    preplay_timeout : Time.time,
-   expect : string}
+   expect : string,
+   stop_on_first : bool,
+   para_first_subgoals : int option}
 
 type prover_problem =
   {comment : string,

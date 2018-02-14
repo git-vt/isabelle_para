@@ -71,7 +71,9 @@ val default_default_params =
    ("smt_proofs", "smart"),
    ("slice", "true"),
    ("minimize", "true"),
-   ("preplay_timeout", "1")]
+   ("preplay_timeout", "1"),
+   ("stop_on_first", "false"),
+   ("para_first_subgoals", "smart")]
 
 val alias_params =
   [("prover", ("provers", [])), (* undocumented *)
@@ -271,6 +273,8 @@ fun extract_params mode default_params override_params =
     val timeout = lookup_time "timeout"
     val preplay_timeout = lookup_time "preplay_timeout"
     val expect = lookup_string "expect"
+    val stop_on_first = lookup_bool "stop_on_first"
+    val para_first_subgoals = lookup_option lookup_int "para_first_subgoals"
   in
     {debug = debug, verbose = verbose, overlord = overlord, spy = spy, provers = provers,
      type_enc = type_enc, strict = strict, lam_trans = lam_trans,
@@ -278,7 +282,8 @@ fun extract_params mode default_params override_params =
      max_facts = max_facts, fact_thresholds = fact_thresholds, max_mono_iters = max_mono_iters,
      max_new_mono_instances = max_new_mono_instances, isar_proofs = isar_proofs,
      compress = compress, try0 = try0, smt_proofs = smt_proofs, slice = slice, minimize = minimize,
-     timeout = timeout, preplay_timeout = preplay_timeout, expect = expect}
+     timeout = timeout, preplay_timeout = preplay_timeout, expect = expect,
+     stop_on_first = stop_on_first, para_first_subgoals = para_first_subgoals}
   end
 
 fun get_params mode = extract_params mode o default_raw_params mode
@@ -291,7 +296,7 @@ val silence_state =
 
 val default_learn_prover_timeout = 2.0
 
-fun hammer_away hammer_first pos_goal override_params writeln_result subcommand opt_i fact_override state0 =
+fun hammer_away_state fact_override state0 =
   let
     (* We generally want chained facts to be picked up by the relevance filter, because it can then
        give it a proper name, which is useful for a variety of reasons (minimization, Isar proofs,
@@ -307,43 +312,60 @@ fun hammer_away hammer_first pos_goal override_params writeln_result subcommand 
         let val ctxt0 = Proof.context_of state0 in
           List.partition (is_useful_unnamed_local_fact ctxt0) chained0
         end
-    val state = state0
+  in state0
       |> (if null inserts then I else Proof.refine_insert inserts #> Proof.set_facts keep_chained)
       |> silence_state
+  end
 
-    val thy = Proof.theory_of state
-    val ctxt = Proof.context_of state
+fun hammer_away_run params writeln_result fact_override opt_i state0 =
+  case run_sledgehammer params Normal writeln_result opt_i fact_override
+                        (hammer_away_state fact_override state0) of
+    (true, _) => ()
+  | (_, (s, _)) =>
+      writeln (Markup.markup (Markup.bad ()) ("Proof status" ^ string_of_subgoal opt_i ^ ": " ^ s))
 
-    val override_params = override_params |> map (normalize_raw_param ctxt)
-  in
-    if subcommand = runN then
-      let val i = the_default 1 opt_i
-          val (b, (s, _)) = run_sledgehammer hammer_first pos_goal
-            (get_params Normal thy override_params) Normal writeln_result i fact_override state in
-        if b then () else writeln (Markup.markup (Markup.bad ()) ("Proof status" ^ string_of_subgoal pos_goal ^ ": " ^ s))
-      end
-    else if subcommand = supported_proversN then
-      supported_provers ctxt
-    else if subcommand = unlearnN then
-      mash_unlearn ctxt
-    else if subcommand = learn_isarN orelse subcommand = learn_proverN orelse
-            subcommand = relearn_isarN orelse subcommand = relearn_proverN then
-      (if subcommand = relearn_isarN orelse subcommand = relearn_proverN then mash_unlearn ctxt
-       else ();
-       mash_learn ctxt
+fun hammer_away override_params writeln_result subcommand opt_i fact_override thy =
+  if subcommand = runN then
+    let
+      val params as {para_first_subgoals, ...} =
+        get_params Normal thy (override_params
+                               |> map (normalize_raw_param (Proof_Context.init_global thy)))
+      val sledgehammer = hammer_away_run params writeln_result fact_override
+    in
+      case para_first_subgoals of
+        NONE => [sledgehammer opt_i]
+      | SOME 0 => [sledgehammer (SOME 0)]
+      | SOME n_goal => map_range (sledgehammer o SOME o curry (op +) 1) n_goal
+    end
+  else
+    [fn state0 =>
+    let
+      val state = hammer_away_state fact_override state0
+      val thy = Proof.theory_of state
+      val ctxt = Proof.context_of state
+    in
+      if subcommand = supported_proversN then
+        supported_provers ctxt
+      else if subcommand = unlearnN then
+        mash_unlearn ctxt
+      else if subcommand = learn_isarN orelse subcommand = learn_proverN orelse
+              subcommand = relearn_isarN orelse subcommand = relearn_proverN then
+        (if subcommand = relearn_isarN orelse subcommand = relearn_proverN then mash_unlearn ctxt
+         else ();
+         mash_learn ctxt
            (* TODO: Use MaSh mode instead and have the special defaults hardcoded in "get_params" *)
            (get_params Normal thy
                 ([("timeout", [string_of_real default_learn_prover_timeout]),
                   ("slice", ["false"])] @
-                 override_params @
+                 (override_params |> map (normalize_raw_param ctxt)) @
                  [("preplay_timeout", ["0"])]))
            fact_override (#facts (Proof.goal state))
            (subcommand = learn_proverN orelse subcommand = relearn_proverN))
-    else if subcommand = refresh_tptpN then
-      refresh_systems_on_tptp ()
-    else
-      error ("Unknown subcommand: " ^ quote subcommand)
-  end
+      else if subcommand = refresh_tptpN then
+        refresh_systems_on_tptp ()
+      else
+        error ("Unknown subcommand: " ^ quote subcommand)
+    end]
 
 fun string_of_raw_param (key, values) =
   key ^ (case implode_param values of "" => "" | value => " = " ^ value)
@@ -362,29 +384,14 @@ val parse_fact_override =
   Scan.optional (Args.parens (Scan.repeat parse_fact_override_chunk >> merge_fact_overrides))
     no_fact_override
 
-val sledgehammer_parse = Scan.optional Parse.name runN -- parse_params
-                                -- parse_fact_override -- Scan.option Parse.nat
-fun sledgehammer hammer_first pos_goal (((subcommand, params), fact_override), opt_i) =
-  Toplevel.keep_proof
-    (hammer_away hammer_first pos_goal params NONE subcommand opt_i fact_override o Toplevel.proof_of)
-val sledgehammer_first = sledgehammer true
-
 val _ =
-  Outer_Syntax.command @{command_keyword sledgehammer}
+  Outer_Syntax.commands' @{command_keyword sledgehammer}
     "search for first-order proof using automatic theorem provers"
-    (sledgehammer_parse >> sledgehammer false NONE)
-val _ =
-  Outer_Syntax.command @{command_keyword sledgehammer_first}
-    "search for first-order proof using automatic theorem provers and stop on first answer"
-    (sledgehammer_parse >> sledgehammer_first NONE)
-val _ =
-  Outer_Syntax.commands @{command_keyword sledgehammer_all}
-    "search for first-order proof using automatic theorem provers on first subgoals in parallel"
-    (sledgehammer_parse --| Parse.$$$ "\<rightleftharpoons>" -- Parse.nat >> (fn (p, n_goal) =>
-       n_goal |> map_range (fn i =>
-                  [ (@{command_keyword prefer}, (Toplevel.proof o Proof.prefer) n_goal)
-                  , (@{command_keyword sledgehammer_first}, sledgehammer_first (SOME (n_goal - i)) p) ])
-              |> List.concat))
+    (Scan.optional Parse.name runN -- parse_params
+      -- parse_fact_override -- Scan.option Parse.nat >>
+      (fn (((subcommand, params), fact_override), opt_i) =>
+        map (fn f => (@{command_keyword sledgehammer}, Toplevel.keep_proof (f o Toplevel.proof_of)))
+        o hammer_away params NONE subcommand opt_i fact_override))
 val _ =
   Outer_Syntax.command @{command_keyword sledgehammer_params}
     "set and display the default parameters for Sledgehammer"
@@ -399,9 +406,8 @@ fun try_sledgehammer auto state =
   let
     val thy = Proof.theory_of state
     val mode = if auto then Auto_Try else Try
-    val i = 1
   in
-    run_sledgehammer false NONE (get_params mode thy []) mode NONE i no_fact_override (silence_state state)
+    run_sledgehammer (get_params mode thy []) mode NONE NONE no_fact_override (silence_state state)
   end
 
 val _ = Try.tool_setup (sledgehammerN, (40, @{system_option auto_sledgehammer}, try_sledgehammer))
@@ -419,8 +425,17 @@ val _ =
                  ("try0", [try0_arg]),
                  ("debug", ["false"]),
                  ("verbose", ["false"]),
-                 ("overlord", ["false"])]);
-          in hammer_away false NONE override_params (SOME writeln_result) runN NONE no_fact_override state end
+                 ("overlord", ["false"])])
+            val state = hammer_away_state no_fact_override state
+            val thy = Proof.theory_of state
+          in hammer_away_run
+               (get_params Normal thy (override_params
+                                       |> map (normalize_raw_param (Proof.context_of state))))
+               (SOME writeln_result)
+               no_fact_override
+               NONE
+               state
+          end
       | NONE => error "Unknown proof context"))
 
 end;
