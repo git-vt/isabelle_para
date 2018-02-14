@@ -71,7 +71,8 @@ val default_default_params =
    ("smt_proofs", "smart"),
    ("slice", "true"),
    ("minimize", "true"),
-   ("preplay_timeout", "1")]
+   ("preplay_timeout", "1"),
+   ("stop_on_first", "false")]
 
 val alias_params =
   [("prover", ("provers", [])), (* undocumented *)
@@ -271,6 +272,7 @@ fun extract_params mode default_params override_params =
     val timeout = lookup_time "timeout"
     val preplay_timeout = lookup_time "preplay_timeout"
     val expect = lookup_string "expect"
+    val stop_on_first = lookup_bool "stop_on_first"
   in
     {debug = debug, verbose = verbose, overlord = overlord, spy = spy, provers = provers,
      type_enc = type_enc, strict = strict, lam_trans = lam_trans,
@@ -278,7 +280,8 @@ fun extract_params mode default_params override_params =
      max_facts = max_facts, fact_thresholds = fact_thresholds, max_mono_iters = max_mono_iters,
      max_new_mono_instances = max_new_mono_instances, isar_proofs = isar_proofs,
      compress = compress, try0 = try0, smt_proofs = smt_proofs, slice = slice, minimize = minimize,
-     timeout = timeout, preplay_timeout = preplay_timeout, expect = expect}
+     timeout = timeout, preplay_timeout = preplay_timeout, expect = expect,
+     stop_on_first = stop_on_first}
   end
 
 fun get_params mode = extract_params mode o default_raw_params mode
@@ -291,7 +294,7 @@ val silence_state =
 
 val default_learn_prover_timeout = 2.0
 
-fun hammer_away hammer_first override_params writeln_result subcommand opt_i fact_override state0 =
+fun hammer_away override_params writeln_result subcommand opt_i fact_override state0 =
   let
     (* We generally want chained facts to be picked up by the relevance filter, because it can then
        give it a proper name, which is useful for a variety of reasons (minimization, Isar proofs,
@@ -318,7 +321,7 @@ fun hammer_away hammer_first override_params writeln_result subcommand opt_i fac
   in
     if subcommand = runN then
       let val i = the_default 1 opt_i in
-        ignore (run_sledgehammer hammer_first
+        ignore (run_sledgehammer
           (get_params Normal thy override_params) Normal writeln_result i fact_override state)
       end
     else if subcommand = supported_proversN then
@@ -361,21 +364,14 @@ val parse_fact_override =
   Scan.optional (Args.parens (Scan.repeat parse_fact_override_chunk >> merge_fact_overrides))
     no_fact_override
 
-val sledgehammer_parse = Scan.optional Parse.name runN -- parse_params
-                                -- parse_fact_override -- Scan.option Parse.nat
-fun sledgehammer hammer_first (((subcommand, params), fact_override), opt_i) =
-  Toplevel.keep_proof
-    (hammer_away hammer_first params NONE subcommand opt_i fact_override o Toplevel.proof_of)
-val sledgehammer_first = sledgehammer true
-
 val _ =
   Outer_Syntax.command @{command_keyword sledgehammer}
     "search for first-order proof using automatic theorem provers"
-    (sledgehammer_parse >> sledgehammer false)
-val _ =
-  Outer_Syntax.command @{command_keyword sledgehammer_first}
-    "search for first-order proof using automatic theorem provers and stop on first answer"
-    (sledgehammer_parse >> sledgehammer_first)
+    (Scan.optional Parse.name runN -- parse_params
+      -- parse_fact_override -- Scan.option Parse.nat >>
+      (fn (((subcommand, params), fact_override), opt_i) =>
+        Toplevel.keep_proof
+          (hammer_away params NONE subcommand opt_i fact_override o Toplevel.proof_of)))
 val _ =
   Outer_Syntax.command @{command_keyword sledgehammer_params}
     "set and display the default parameters for Sledgehammer"
@@ -392,7 +388,7 @@ fun try_sledgehammer auto state =
     val mode = if auto then Auto_Try else Try
     val i = 1
   in
-    run_sledgehammer false (get_params mode thy []) mode NONE i no_fact_override (silence_state state)
+    run_sledgehammer (get_params mode thy []) mode NONE i no_fact_override (silence_state state)
   end
 
 val _ = Try.tool_setup (sledgehammerN, (40, @{system_option auto_sledgehammer}, try_sledgehammer))
@@ -411,7 +407,7 @@ val _ =
                  ("debug", ["false"]),
                  ("verbose", ["false"]),
                  ("overlord", ["false"])]);
-          in hammer_away false override_params (SOME writeln_result) runN NONE no_fact_override state end
+          in hammer_away override_params (SOME writeln_result) runN NONE no_fact_override state end
       | NONE => error "Unknown proof context"))
 
 end;

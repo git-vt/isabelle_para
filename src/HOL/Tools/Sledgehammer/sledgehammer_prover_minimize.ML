@@ -95,7 +95,7 @@ fun test_facts ({debug, verbose, overlord, spy, provers, max_mono_iters, max_new
        max_mono_iters = max_mono_iters, max_new_mono_instances = max_new_mono_instances,
        isar_proofs = isar_proofs, compress = compress, try0 = try0, smt_proofs = smt_proofs,
        slice = false, minimize = minimize, timeout = timeout, preplay_timeout = preplay_timeout,
-       expect = ""}
+       expect = "", stop_on_first = false}
     val problem =
       {comment = "", state = state, goal = goal, subgoal = i, subgoal_count = n,
        factss = [("", facts)], found_proof = I}

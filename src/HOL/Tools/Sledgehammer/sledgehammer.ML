@@ -24,8 +24,7 @@ sig
   val play_one_line_proof : bool -> Time.time -> (string * stature) list -> Proof.state -> int ->
     proof_method * proof_method list list -> (string * stature) list * (proof_method * play_outcome)
   val string_of_factss : (string * fact list) list -> string
-  val run_sledgehammer : bool ->
-    params -> mode -> (string -> unit) option -> int -> fact_override ->
+  val run_sledgehammer : params -> mode -> (string -> unit) option -> int -> fact_override ->
     Proof.state -> bool * (string * string list)
 end;
 
@@ -238,7 +237,7 @@ fun string_of_factss factss =
     cat_lines (map (fn (filter, facts) =>
       (if filter = "" then "" else quote filter ^ ": ") ^ string_of_facts facts) factss)
 
-fun run_sledgehammer hammer_first (params as {verbose, spy, provers, max_facts, ...}) mode writeln_result i
+fun run_sledgehammer (params as {verbose, spy, provers, max_facts, stop_on_first, ...}) mode writeln_result i
     (fact_override as {only, ...}) state =
   if null provers then
     error "No prover is set"
@@ -297,31 +296,7 @@ fun run_sledgehammer hammer_first (params as {verbose, spy, provers, max_facts, 
               (state, i, "All", "Selected facts: " ^ spying_str_of_factss factss)))
           end
 
-        fun launch_provers_first () =
-          let
-            val factss = get_factss provers
-            val proof_found = Synchronized.var "proof_found_launch" false
-            val problem =
-              {comment = "", state = state, goal = goal, subgoal = i, subgoal_count = n,
-               factss = factss, found_proof = fn _ => (Synchronized.change proof_found (K true);
-                                                       found_proof ()) }
-            val learn = mash_learn_proof ctxt params (Thm.prop_of goal) all_facts
-            val launch = launch_prover params mode writeln_result only learn
-          in
-            if mode = Auto_Try then
-              (unknownN, [])
-              |> fold (fn prover => fn accum as (outcome_code, _) =>
-                  if outcome_code = someN then accum else launch problem prover)
-                provers
-            else
-              (learn chained;
-               provers
-               |> Par_List.get_some (fn name =>
-                    let val outcome = launch problem name
-                    in if Synchronized.value proof_found then SOME outcome else NONE end)
-               |> the_list |> map fst |> max_outcome_code |> rpair [])
-          end
-        fun launch_provers_full () =
+        fun launch_provers found_proof par_list_map =
           let
             val factss = get_factss provers
             val problem =
@@ -338,11 +313,22 @@ fun run_sledgehammer hammer_first (params as {verbose, spy, provers, max_facts, 
             else
               (learn chained;
                provers
-               |> Par_List.map (launch problem #> fst)
-               |> max_outcome_code |> rpair [])
+               |> par_list_map (launch problem)
+               |> map fst |> max_outcome_code |> rpair [])
           end
       in
-        (if hammer_first then launch_provers_first () else launch_provers_full ())
+        (if stop_on_first then
+           let val proof_found = Synchronized.var "proof_found_launch" false
+           in launch_provers
+                (fn _ => (Synchronized.change proof_found (K true); found_proof ()))
+                (fn launch_pb => fn l =>
+                   l |> Par_List.get_some (fn name =>
+                          let val outcome = launch_pb name
+                          in if Synchronized.value proof_found then SOME outcome else NONE end)
+                     |> the_list)
+           end
+         else
+           launch_provers found_proof Par_List.map)
         handle Timeout.TIMEOUT _ =>
           (print "Sledgehammer ran out of time"; (unknownN, []))
       end
