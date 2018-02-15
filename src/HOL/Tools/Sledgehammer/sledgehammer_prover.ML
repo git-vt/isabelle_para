@@ -43,7 +43,7 @@ sig
      preplay_timeout : Time.time,
      expect : string,
      stop_on_first : bool,
-     para_first_subgoals : int option}
+     parallel_subgoals : bool}
 
   type prover_problem =
     {comment : string,
@@ -130,7 +130,7 @@ type params =
    preplay_timeout : Time.time,
    expect : string,
    stop_on_first : bool,
-   para_first_subgoals : int option}
+   parallel_subgoals : bool}
 
 type prover_problem =
   {comment : string,

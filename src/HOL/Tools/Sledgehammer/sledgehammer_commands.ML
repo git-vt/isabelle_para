@@ -73,7 +73,7 @@ val default_default_params =
    ("minimize", "true"),
    ("preplay_timeout", "1"),
    ("stop_on_first", "false"),
-   ("para_first_subgoals", "smart")]
+   ("parallel_subgoals", "false")]
 
 val alias_params =
   [("prover", ("provers", [])), (* undocumented *)
@@ -274,7 +274,7 @@ fun extract_params mode default_params override_params =
     val preplay_timeout = lookup_time "preplay_timeout"
     val expect = lookup_string "expect"
     val stop_on_first = lookup_bool "stop_on_first"
-    val para_first_subgoals = lookup_option lookup_int "para_first_subgoals"
+    val parallel_subgoals = lookup_bool "parallel_subgoals"
   in
     {debug = debug, verbose = verbose, overlord = overlord, spy = spy, provers = provers,
      type_enc = type_enc, strict = strict, lam_trans = lam_trans,
@@ -283,7 +283,7 @@ fun extract_params mode default_params override_params =
      max_new_mono_instances = max_new_mono_instances, isar_proofs = isar_proofs,
      compress = compress, try0 = try0, smt_proofs = smt_proofs, slice = slice, minimize = minimize,
      timeout = timeout, preplay_timeout = preplay_timeout, expect = expect,
-     stop_on_first = stop_on_first, para_first_subgoals = para_first_subgoals}
+     stop_on_first = stop_on_first, parallel_subgoals = parallel_subgoals}
   end
 
 fun get_params mode = extract_params mode o default_raw_params mode
@@ -324,18 +324,24 @@ fun hammer_away_run params writeln_result fact_override opt_i state0 =
   | (_, (s, _)) =>
       writeln (Markup.markup (Markup.bad ()) ("Proof status" ^ string_of_subgoal opt_i ^ ": " ^ s))
 
-fun hammer_away override_params writeln_result subcommand opt_i fact_override thy _ =
+fun hammer_away override_params writeln_result subcommand opt_i fact_override thy st =
   if subcommand = runN then
     let
-      val params as {para_first_subgoals, ...} =
+      val params as {parallel_subgoals, ...} =
         get_params Normal thy (override_params
                                |> map (normalize_raw_param (Proof_Context.init_global thy)))
       val sledgehammer = hammer_away_run params writeln_result fact_override
+      val sledgehammer_parallel = map_range (sledgehammer o SOME o curry (op +) 1)
     in
-      case para_first_subgoals of
-        NONE => [sledgehammer opt_i]
-      | SOME 0 => [sledgehammer (SOME 0)]
-      | SOME n_goal => map_range (sledgehammer o SOME o curry (op +) 1) n_goal
+      if parallel_subgoals then
+        case opt_i of
+          NONE =>
+            (case st of NONE => [K ()]
+                      | SOME st => sledgehammer_parallel (subgoal_count st))
+        | SOME 0 => [sledgehammer (SOME 0)]
+        | SOME n_goal => sledgehammer_parallel n_goal
+      else
+        [sledgehammer opt_i]
     end
   else
     [fn state0 =>

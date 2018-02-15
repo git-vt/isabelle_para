@@ -111,7 +111,7 @@ fun play_one_line_proof minimize timeout used_facts state i (preferred_meth, met
          (meth, play)))
 
 fun launch_prover (params as {debug, verbose, spy, max_facts, minimize, timeout, preplay_timeout,
-      expect, para_first_subgoals = fst_subg, ...}) mode writeln_result only learn
+      expect, parallel_subgoals, ...}) mode writeln_result only learn
     {comment, state, goal, subgoal, subgoal_count, factss as (_, facts) :: _, found_proof} name =
   let
     val ctxt = Proof.context_of state
@@ -219,12 +219,12 @@ fun launch_prover (params as {debug, verbose, spy, max_facts, minimize, timeout,
         val (outcome_code, message) = Timeout.apply hard_timeout go ()
         val outcome =
           if outcome_code = someN orelse mode = Normal then
-            (case fst_subg of NONE => "" | SOME _ => "  (subgoal " ^ Int.toString subgoal ^ ") ")
+            (if parallel_subgoals then "  (subgoal " ^ Int.toString subgoal ^ ") " else "")
             ^ quote name ^ ": " ^ message ()
           else ""
         val _ =
           if outcome <> "" andalso is_some writeln_result then the writeln_result outcome
-          else writeln ((case fst_subg of NONE => I | _ => Markup.markup Markup.intensify) outcome)
+          else writeln ((if parallel_subgoals then Markup.markup Markup.intensify else I) outcome)
       in (outcome_code, []) end
   end
 
