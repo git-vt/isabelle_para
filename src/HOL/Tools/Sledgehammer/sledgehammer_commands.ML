@@ -324,7 +324,7 @@ fun hammer_away_run params writeln_result fact_override opt_i state0 =
   | (_, (s, _)) =>
       writeln (Markup.markup (Markup.bad ()) ("Proof status" ^ string_of_subgoal opt_i ^ ": " ^ s))
 
-fun hammer_away override_params writeln_result subcommand opt_i fact_override thy =
+fun hammer_away override_params writeln_result subcommand opt_i fact_override thy _ =
   if subcommand = runN then
     let
       val params as {para_first_subgoals, ...} =
@@ -391,7 +391,7 @@ val _ =
       -- parse_fact_override -- Scan.option Parse.nat >>
       (fn (((subcommand, params), fact_override), opt_i) =>
         map (fn f => (@{command_keyword sledgehammer}, Toplevel.keep_proof (f o Toplevel.proof_of)))
-        o hammer_away params NONE subcommand opt_i fact_override))
+        oo hammer_away params NONE subcommand opt_i fact_override))
 val _ =
   Outer_Syntax.command @{command_keyword sledgehammer_params}
     "set and display the default parameters for Sledgehammer"
