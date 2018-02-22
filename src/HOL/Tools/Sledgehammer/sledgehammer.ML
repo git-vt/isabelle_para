@@ -242,7 +242,7 @@ fun string_of_factss factss =
       (if filter = "" then "" else quote filter ^ ": ") ^ string_of_facts facts) factss)
 
 val string_of_subgoal = fn NONE => ""
-                         | SOME i => " for subgoal " ^ Int.toString i ^ " "
+                         | SOME i => " for subgoal " ^ Int.toString i
 
 fun run_sledgehammer (params as {verbose, spy, provers, max_facts, stop_on_first, ...})
     mode writeln_result opt_i (fact_override as {only, ...}) state =

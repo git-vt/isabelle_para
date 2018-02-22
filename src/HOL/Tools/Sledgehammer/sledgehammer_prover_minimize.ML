@@ -80,7 +80,7 @@ fun print silent f = if silent then () else writeln (f ())
 
 fun test_facts ({debug, verbose, overlord, spy, provers, max_mono_iters, max_new_mono_instances,
       type_enc, strict, lam_trans, uncurried_aliases, isar_proofs, compress, try0, smt_proofs,
-      minimize, preplay_timeout, ...} : params)
+      minimize, preplay_timeout, stop_on_first, parallel_subgoals, ...} : params)
     silent (prover : prover) timeout i n state goal facts =
   let
     val _ = print silent (fn () => "Testing " ^ n_facts (map fst facts) ^
@@ -95,7 +95,7 @@ fun test_facts ({debug, verbose, overlord, spy, provers, max_mono_iters, max_new
        max_mono_iters = max_mono_iters, max_new_mono_instances = max_new_mono_instances,
        isar_proofs = isar_proofs, compress = compress, try0 = try0, smt_proofs = smt_proofs,
        slice = false, minimize = minimize, timeout = timeout, preplay_timeout = preplay_timeout,
-       expect = "", stop_on_first = false, parallel_subgoals = false}
+       expect = "", stop_on_first = stop_on_first, parallel_subgoals = parallel_subgoals}
     val problem =
       {comment = "", state = state, goal = goal, subgoal = i, subgoal_count = n,
        factss = [("", facts)], found_proof = I}
