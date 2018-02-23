@@ -360,7 +360,7 @@ val use_thy = use_thys o single;
 fun script_thy pos txt thy =
   let
     val trs =
-      Outer_Syntax.parse thy pos txt
+      Outer_Syntax.parse thy NONE pos txt
       |> map (Toplevel.modify_init (K thy));
     val end_pos = if null trs then pos else Toplevel.pos_of (List.last (List.last trs));
     val end_state = fold (fold (Toplevel.command_exception true)) trs Toplevel.toplevel;
