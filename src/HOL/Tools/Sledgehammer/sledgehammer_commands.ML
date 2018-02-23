@@ -73,7 +73,8 @@ val default_default_params =
    ("minimize", "true"),
    ("preplay_timeout", "1"),
    ("stop_on_first", "false"),
-   ("parallel_subgoals", "false")]
+   ("parallel_subgoals", "false"),
+   ("join_subgoals", "false")]
 
 val alias_params =
   [("prover", ("provers", [])), (* undocumented *)
@@ -275,6 +276,7 @@ fun extract_params mode default_params override_params =
     val expect = lookup_string "expect"
     val stop_on_first = lookup_bool "stop_on_first"
     val parallel_subgoals = lookup_bool "parallel_subgoals"
+    val join_subgoals = lookup_bool "join_subgoals"
   in
     {debug = debug, verbose = verbose, overlord = overlord, spy = spy, provers = provers,
      type_enc = type_enc, strict = strict, lam_trans = lam_trans,
@@ -283,7 +285,8 @@ fun extract_params mode default_params override_params =
      max_new_mono_instances = max_new_mono_instances, isar_proofs = isar_proofs,
      compress = compress, try0 = try0, smt_proofs = smt_proofs, slice = slice, minimize = minimize,
      timeout = timeout, preplay_timeout = preplay_timeout, expect = expect,
-     stop_on_first = stop_on_first, parallel_subgoals = parallel_subgoals}
+     stop_on_first = stop_on_first, parallel_subgoals = parallel_subgoals,
+     join_subgoals = join_subgoals}
   end
 
 fun get_params mode = extract_params mode o default_raw_params mode
@@ -317,8 +320,8 @@ fun hammer_away_state fact_override state0 =
       |> silence_state
   end
 
-fun hammer_away_run params writeln_result fact_override opt_i state0 =
-  case run_sledgehammer params Normal writeln_result opt_i fact_override
+fun hammer_away_run params writeln_result fact_override subgoal_proof opt_i state0 =
+  case run_sledgehammer params Normal writeln_result subgoal_proof opt_i fact_override
                         (hammer_away_state fact_override state0) of
     (true, _) => ()
   | (_, (s, _)) =>
@@ -327,21 +330,64 @@ fun hammer_away_run params writeln_result fact_override opt_i state0 =
 fun hammer_away override_params writeln_result subcommand opt_i fact_override thy st =
   if subcommand = runN then
     let
-      val params as {parallel_subgoals, ...} =
+      val params as {parallel_subgoals, join_subgoals, ...} =
         get_params Normal thy (override_params
                                |> map (normalize_raw_param (Proof_Context.init_global thy)))
       val sledgehammer = hammer_away_run params writeln_result fact_override
-      val sledgehammer_parallel = map_range (sledgehammer o SOME o curry (op +) 1)
+      val sledgehammer' = sledgehammer Sledgehammer_Util.sendback_cmd
+      fun sledgehammer_parallel n_goal =
+        if join_subgoals then
+          let val tab = Synchronized.var "sledgehammer_join_subgoals" Inttab.empty in
+            map_range (fn i =>
+                        let val i = i + 1
+                            fun change_tab l = Synchronized.change tab o Inttab.map_default (i, l)
+                        in fn st => (sledgehammer (fn mode => fn f =>
+                                                   let val s = (mode, f true)
+                                                   in change_tab [s] (cons s);
+                                                      Active.sendback_markup_command (f false) end)
+                                                  (SOME i)
+                                                  st;
+                                     change_tab [] I)
+                        end)
+                      n_goal
+            @ [fn _ =>
+                  Synchronized.guarded_access tab (fn tab => if length (Inttab.keys tab) = n_goal
+                                                             then SOME (tab, tab) else NONE)
+               |> (fn tab =>
+                    Inttab.fold
+                      (fn (_, l) => fn (defer, VM_in_state, l_tac) =>
+                        let fun f vm_in s = (0, vm_in, (if VM_in_state then "(*" ^ s ^ "*)" else s)
+                                                       :: map_range (K "defer") defer @ l_tac)
+                        in
+                          case List.partition
+                                 (fn x => case x of
+                                   (Sledgehammer_Proof_Methods.VM_in_prove, _) => true | _ => false)
+                                 l
+                          of ([], []) => (defer + 1, VM_in_state, l_tac)
+                           | ((_, s) :: _, _) => f VM_in_state s
+                           | (_, (_, s) :: _) => f true s
+                        end)
+                      tab
+                      (0, false, []))
+               |> #3 |> rev
+               |> (fn [] => ()
+                    | l => 
+                      ("In summary: " ^ Active.sendback_markup_command (String.concatWith "\n" l))
+                      |> Markup.markup Markup.intensify
+                      |> writeln)]
+          end
+        else
+          map_range (sledgehammer' o SOME o curry (op +) 1) n_goal
     in
       if parallel_subgoals then
         case opt_i of
           NONE =>
             (case st of NONE => [K ()]
                       | SOME st => sledgehammer_parallel (subgoal_count st))
-        | SOME 0 => [sledgehammer (SOME 0)]
+        | SOME 0 => [sledgehammer' (SOME 0)]
         | SOME n_goal => sledgehammer_parallel n_goal
       else
-        [sledgehammer opt_i]
+        [sledgehammer' opt_i]
     end
   else
     [fn state0 =>
@@ -413,7 +459,8 @@ fun try_sledgehammer auto state =
     val thy = Proof.theory_of state
     val mode = if auto then Auto_Try else Try
   in
-    run_sledgehammer (get_params mode thy []) mode NONE NONE no_fact_override (silence_state state)
+    run_sledgehammer (get_params mode thy []) mode NONE Sledgehammer_Util.sendback_cmd NONE
+                     no_fact_override (silence_state state)
   end
 
 val _ = Try.tool_setup (sledgehammerN, (40, @{system_option auto_sledgehammer}, try_sledgehammer))
@@ -439,6 +486,7 @@ val _ =
                                        |> map (normalize_raw_param (Proof.context_of state))))
                (SOME writeln_result)
                no_fact_override
+               Sledgehammer_Util.sendback_cmd
                NONE
                state
           end

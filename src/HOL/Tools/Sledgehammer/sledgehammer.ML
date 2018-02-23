@@ -13,6 +13,7 @@ sig
   type fact_override = Sledgehammer_Fact.fact_override
   type proof_method = Sledgehammer_Proof_Methods.proof_method
   type play_outcome = Sledgehammer_Proof_Methods.play_outcome
+  type isar_vm_transition = Sledgehammer_Proof_Methods.isar_vm_transition
   type mode = Sledgehammer_Prover.mode
   type params = Sledgehammer_Prover.params
 
@@ -25,7 +26,8 @@ sig
     proof_method * proof_method list list -> (string * stature) list * (proof_method * play_outcome)
   val string_of_factss : (string * fact list) list -> string
   val string_of_subgoal : int option -> string
-  val run_sledgehammer : params -> mode -> (string -> unit) option -> int option -> fact_override ->
+  val run_sledgehammer : params -> mode -> (string -> unit) option ->
+    (isar_vm_transition -> (bool -> string) -> string) -> int option -> fact_override ->
     Proof.state -> bool * (string * string list)
 end;
 
@@ -112,7 +114,8 @@ fun play_one_line_proof minimize timeout used_facts state i (preferred_meth, met
 
 fun launch_prover (params as {debug, verbose, spy, max_facts, minimize, timeout, preplay_timeout,
       expect, parallel_subgoals, ...}) mode writeln_result only learn
-    {comment, state, goal, subgoal, subgoal_count, factss as (_, facts) :: _, found_proof} name =
+    {comment, state, goal, subgoal, subgoal_count, factss as (_, facts) :: _,
+     found_proof, subgoal_proof} name =
   let
     val ctxt = Proof.context_of state
 
@@ -128,7 +131,7 @@ fun launch_prover (params as {debug, verbose, spy, max_facts, minimize, timeout,
        |> map (apsnd ((not (is_ho_atp ctxt name)
            ? filter_out (fn ((_, (_, Induction)), _) => true | _ => false))
          #> take num_facts)),
-       found_proof = found_proof}
+       found_proof = found_proof, subgoal_proof = subgoal_proof}
 
     fun print_used_facts used_facts used_from =
       tag_list 1 used_from
@@ -245,7 +248,7 @@ val string_of_subgoal = fn NONE => ""
                          | SOME i => " for subgoal " ^ Int.toString i
 
 fun run_sledgehammer (params as {verbose, spy, provers, max_facts, stop_on_first, ...})
-    mode writeln_result opt_i (fact_override as {only, ...}) state =
+    mode writeln_result subgoal_proof opt_i (fact_override as {only, ...}) state =
   if null provers then
     error "No prover is set"
   else
@@ -310,7 +313,7 @@ fun run_sledgehammer (params as {verbose, spy, provers, max_facts, stop_on_first
             val factss = get_factss provers
             val problem =
               {comment = "", state = state, goal = goal, subgoal = i, subgoal_count = n,
-               factss = factss, found_proof = found_proof}
+               factss = factss, found_proof = found_proof, subgoal_proof = subgoal_proof}
             val learn = mash_learn_proof ctxt params (Thm.prop_of goal) all_facts
             val launch = launch_prover params mode writeln_result only learn
           in

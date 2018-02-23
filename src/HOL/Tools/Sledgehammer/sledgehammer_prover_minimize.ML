@@ -10,6 +10,7 @@ sig
   type stature = ATP_Problem_Generate.stature
   type proof_method = Sledgehammer_Proof_Methods.proof_method
   type play_outcome = Sledgehammer_Proof_Methods.play_outcome
+  type isar_vm_transition = Sledgehammer_Proof_Methods.isar_vm_transition
   type mode = Sledgehammer_Prover.mode
   type params = Sledgehammer_Prover.params
   type prover = Sledgehammer_Prover.prover
@@ -21,8 +22,8 @@ sig
 
   val binary_min_facts : int Config.T
   val minimize_facts : (thm list -> unit) -> string -> params -> bool -> int -> int ->
-    Proof.state -> thm -> ((string * stature) * thm list) list ->
-    ((string * stature) * thm list) list option
+    (isar_vm_transition -> (bool -> string) -> string) -> Proof.state -> thm ->
+    ((string * stature) * thm list) list -> ((string * stature) * thm list) list option
     * ((unit -> (string * stature) list * (proof_method * play_outcome)) -> string)
   val get_minimizing_prover : Proof.context -> mode -> (thm list -> unit) -> string -> prover
 end;
@@ -80,8 +81,8 @@ fun print silent f = if silent then () else writeln (f ())
 
 fun test_facts ({debug, verbose, overlord, spy, provers, max_mono_iters, max_new_mono_instances,
       type_enc, strict, lam_trans, uncurried_aliases, isar_proofs, compress, try0, smt_proofs,
-      minimize, preplay_timeout, stop_on_first, parallel_subgoals, ...} : params)
-    silent (prover : prover) timeout i n state goal facts =
+      minimize, preplay_timeout, stop_on_first, parallel_subgoals, join_subgoals, ...} : params)
+    silent (prover : prover) timeout i n subgoal_proof state goal facts =
   let
     val _ = print silent (fn () => "Testing " ^ n_facts (map fst facts) ^
       (if verbose then " (timeout: " ^ string_of_time timeout ^ ")" else "") ^ "...")
@@ -95,10 +96,11 @@ fun test_facts ({debug, verbose, overlord, spy, provers, max_mono_iters, max_new
        max_mono_iters = max_mono_iters, max_new_mono_instances = max_new_mono_instances,
        isar_proofs = isar_proofs, compress = compress, try0 = try0, smt_proofs = smt_proofs,
        slice = false, minimize = minimize, timeout = timeout, preplay_timeout = preplay_timeout,
-       expect = "", stop_on_first = stop_on_first, parallel_subgoals = parallel_subgoals}
+       expect = "", stop_on_first = stop_on_first, parallel_subgoals = parallel_subgoals,
+       join_subgoals = join_subgoals}
     val problem =
       {comment = "", state = state, goal = goal, subgoal = i, subgoal_count = n,
-       factss = [("", facts)], found_proof = I}
+       factss = [("", facts)], found_proof = I, subgoal_proof = subgoal_proof}
     val result0 as {outcome = outcome0, used_facts, used_from, preferred_methss, run_time,
         message} =
       prover params problem
@@ -196,15 +198,16 @@ fun binary_minimize test timeout result xs =
     | p => p)
   end
 
-fun minimize_facts do_learn prover_name (params as {learn, timeout, ...}) silent i n state goal
-    facts =
+fun minimize_facts do_learn prover_name (params as {learn, timeout, ...}) silent i n subgoal_proof
+    state goal facts =
   let
     val ctxt = Proof.context_of state
     val prover = get_prover ctxt Minimize prover_name
     val (chained, non_chained) = List.partition is_fact_chained facts
 
     fun test timeout non_chained =
-      test_facts params silent prover timeout i n state goal (chained @ non_chained)
+      test_facts params silent prover timeout i n subgoal_proof state goal
+                 (chained @ non_chained)
   in
     (print silent (fn () => "Sledgehammer minimizer: " ^ quote prover_name);
      (case test timeout non_chained of
@@ -235,7 +238,7 @@ fun minimize_facts do_learn prover_name (params as {learn, timeout, ...}) silent
   end
 
 fun maybe_minimize mode do_learn name (params as {verbose, minimize, ...})
-    ({state, goal, subgoal, subgoal_count, ...} : prover_problem)
+    ({state, goal, subgoal, subgoal_count, subgoal_proof, ...} : prover_problem)
     (result as {outcome, used_facts, used_from, preferred_methss, run_time, message}
      : prover_result) =
   if is_some outcome then
@@ -245,8 +248,9 @@ fun maybe_minimize mode do_learn name (params as {verbose, minimize, ...})
       val (used_facts, message) =
         if minimize then
           minimize_facts do_learn name params
-            (not verbose orelse (mode <> Normal andalso mode <> MaSh)) subgoal subgoal_count state
-            goal (filter_used_facts true used_facts (map (apsnd single) used_from))
+            (not verbose orelse (mode <> Normal andalso mode <> MaSh))
+            subgoal subgoal_count subgoal_proof state goal
+            (filter_used_facts true used_facts (map (apsnd single) used_from))
           |>> Option.map (map fst)
         else
           (SOME used_facts, message)
