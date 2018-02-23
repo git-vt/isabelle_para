@@ -48,7 +48,7 @@ sig
   val relabel_isar_proof_nicely : isar_proof -> isar_proof
   val rationalize_obtains_in_isar_proofs : Proof.context -> isar_proof -> isar_proof
 
-  val string_of_isar_proof : Proof.context -> int -> int -> isar_proof -> string
+  val string_of_isar_proof : Proof.context -> int -> int -> isar_proof -> bool -> string
 end;
 
 structure Sledgehammer_Isar_Proof : SLEDGEHAMMER_ISAR_PROOF =
@@ -265,7 +265,7 @@ fun is_thesis ctxt t =
 
 val indent_size = 2
 
-fun string_of_isar_proof ctxt0 i n proof =
+fun string_of_isar_proof ctxt0 i n proof skip_prefer =
   let
     val keywords = Thy_Header.get_keywords' ctxt0
 
@@ -371,7 +371,7 @@ fun string_of_isar_proof ctxt0 i n proof =
       |> add_steps ind steps
       |> fst
   in
-    (if i <> 1 then "prefer " ^ string_of_int i ^ "\n" else "") ^
+    (if i = 1 orelse skip_prefer then "" else "prefer " ^ string_of_int i ^ "\n") ^
     of_indent 0 ^ "proof -\n" ^ of_proof 1 ctxt proof ^
     of_indent 0 ^ (if n = 1 then "qed" else "next")
   end
