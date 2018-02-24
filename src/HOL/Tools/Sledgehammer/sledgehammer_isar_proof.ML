@@ -373,7 +373,7 @@ fun string_of_isar_proof ctxt0 i n proof skip_prefer =
   in
     (if i = 1 orelse skip_prefer then "" else "prefer " ^ string_of_int i ^ "\n") ^
     of_indent 0 ^ "proof -\n" ^ of_proof 1 ctxt proof ^
-    of_indent 0 ^ (if n = 1 then "qed" else "next")
+    of_indent 0 ^ (if n = 1 orelse i = n andalso skip_prefer then "qed" else "next")
   end
 
 end;

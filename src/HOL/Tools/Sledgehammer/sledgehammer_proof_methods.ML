@@ -168,7 +168,7 @@ fun play_outcome_ord (Played time1, Played time2) =
 
 fun apply_on_subgoal i n skip_prefer =
   (if i = 1 orelse skip_prefer then "" else "prefer " ^ string_of_int i ^ " ") ^
-  (if i = n then "by " else "apply ")
+  (if n = 1 orelse i = n andalso skip_prefer then "by " else "apply ")
 
 (* FIXME *)
 fun proof_method_command ctxt meth i n used_chaineds _(*num_chained*) extras skip_prefer =
