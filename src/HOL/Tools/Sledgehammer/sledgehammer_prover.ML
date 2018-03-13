@@ -55,7 +55,7 @@ sig
      subgoal_count : int,
      factss : (string * fact list) list,
      found_proof : unit -> unit,
-     subgoal_proof : isar_vm_transition -> (bool -> string) -> string}
+     subgoal_proof : isar_vm_transition -> (int option -> string) -> string}
 
   type prover_result =
     {outcome : atp_failure option,
@@ -144,7 +144,7 @@ type prover_problem =
    subgoal_count : int,
    factss : (string * fact list) list,
    found_proof : unit -> unit,
-   subgoal_proof : isar_vm_transition -> (bool -> string) -> string}
+   subgoal_proof : isar_vm_transition -> (int option -> string) -> string}
 
 type prover_result =
   {outcome : atp_failure option,

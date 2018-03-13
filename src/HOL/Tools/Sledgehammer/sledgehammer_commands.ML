@@ -342,9 +342,9 @@ fun hammer_away override_params writeln_result subcommand opt_i fact_override th
                         let val i = i + 1
                             fun change_tab l = Synchronized.change tab o Inttab.map_default (i, l)
                         in fn st => (sledgehammer (fn mode => fn f =>
-                                                   let val s = (mode, f true)
+                                                   let val s = (mode, f)
                                                    in change_tab [s] (cons s);
-                                                      Active.sendback_markup_command (f false) end)
+                                                      Active.sendback_markup_command (f NONE) end)
                                                   (SOME i)
                                                   st;
                                      change_tab [] I)
@@ -355,21 +355,23 @@ fun hammer_away override_params writeln_result subcommand opt_i fact_override th
                                                              then SOME (tab, tab) else NONE)
                |> (fn tab =>
                     Inttab.fold
-                      (fn (_, l) => fn (defer, VM_in_state, l_tac) =>
-                        let fun f vm_in s = (0, vm_in, (if VM_in_state then "(*" ^ s ^ "*)" else s)
-                                                       :: map_range (K "defer") defer @ l_tac)
+                      (fn (_, l) => fn (total_defer, defer, VM_in_state, l_tac) =>
+                        let fun f vm_in f_s = (total_defer, 0, vm_in,
+                                               let val s = f_s (SOME total_defer)
+                                               in if VM_in_state then "(*" ^ s ^ "*)" else s end
+                                               :: map_range (K "defer") defer @ l_tac)
                         in
                           case List.partition
                                  (fn x => case x of
                                    (Sledgehammer_Proof_Methods.VM_in_prove, _) => true | _ => false)
                                  l
-                          of ([], []) => (defer + 1, VM_in_state, l_tac)
-                           | ((_, s) :: _, _) => f VM_in_state s
-                           | (_, (_, s) :: _) => f true s
+                          of ([], []) => (total_defer + 1, defer + 1, VM_in_state, l_tac)
+                           | ((_, f_s) :: _, _) => f VM_in_state f_s
+                           | (_, (_, f_s) :: _) => f true f_s
                         end)
                       tab
-                      (0, false, []))
-               |> #3 |> rev
+                      (0, 0, false, []))
+               |> #4 |> rev
                |> (fn [] => ()
                     | l => 
                       ("In summary: " ^ Active.sendback_markup_command (String.concatWith "\n" l))

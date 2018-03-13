@@ -27,7 +27,7 @@ sig
   val string_of_factss : (string * fact list) list -> string
   val string_of_subgoal : int option -> string
   val run_sledgehammer : params -> mode -> (string -> unit) option ->
-    (isar_vm_transition -> (bool -> string) -> string) -> int option -> fact_override ->
+    (isar_vm_transition -> (int option -> string) -> string) -> int option -> fact_override ->
     Proof.state -> bool * (string * string list)
 end;
 

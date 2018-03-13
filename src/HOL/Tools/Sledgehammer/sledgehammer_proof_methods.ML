@@ -34,7 +34,7 @@ sig
 
   type one_line_params =
     ((string * stature) list * (proof_method * play_outcome)) * string * int * int
-    * (isar_vm_transition -> (bool -> string) -> string)
+    * (isar_vm_transition -> (int option -> string) -> string)
 
   val is_proof_method_direct : proof_method -> bool
   val proof_method_distinguishes_chained_and_direct : proof_method -> bool
@@ -77,7 +77,7 @@ datatype play_outcome =
 
 type one_line_params =
   ((string * stature) list * (proof_method * play_outcome)) * string * int * int
-  * (isar_vm_transition -> (bool -> string) -> string)
+  * (isar_vm_transition -> (int option -> string) -> string)
 
 fun is_proof_method_direct (Metis_Method _) = true
   | is_proof_method_direct Meson_Method = true
@@ -167,8 +167,9 @@ fun play_outcome_ord (Played time1, Played time2) =
   | play_outcome_ord (Play_Failed, Play_Failed) = EQUAL
 
 fun apply_on_subgoal i n skip_prefer =
-  (if i = 1 orelse skip_prefer then "" else "prefer " ^ string_of_int i ^ " ") ^
-  (if n = 1 orelse i = n andalso skip_prefer then "by " else "apply ")
+  (if i = 1 orelse is_some skip_prefer then "" else "prefer " ^ string_of_int i ^ " ") ^
+  (if n = 1 orelse i = n andalso case skip_prefer of SOME 0 => true | _ => false
+   then "by " else "apply ")
 
 (* FIXME *)
 fun proof_method_command ctxt meth i n used_chaineds _(*num_chained*) extras skip_prefer =
@@ -195,7 +196,7 @@ fun one_line_proof_text ctxt num_chained
   let val (chained, extra) = List.partition (fn (_, (sc, _)) => sc = Chained) used_facts in
     map fst extra
     |> proof_method_command ctxt meth subgoal subgoal_count (map fst chained) num_chained
-    |> (if play = Play_Failed then fn f => prefix "One-line proof reconstruction failed: " (f false)
+    |> (if play = Play_Failed then fn f => prefix "One-line proof reconstruction failed: " (f NONE)
         else try_command_line subgoal_proof banner play)
   end
 
