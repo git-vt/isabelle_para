@@ -22,7 +22,7 @@ sig
 
   val binary_min_facts : int Config.T
   val minimize_facts : (thm list -> unit) -> string -> params -> bool -> int -> int ->
-    (isar_vm_transition -> (bool -> string) -> string) -> Proof.state -> thm ->
+    (isar_vm_transition -> (int option -> string) -> string) -> Proof.state -> thm ->
     ((string * stature) * thm list) list -> ((string * stature) * thm list) list option
     * ((unit -> (string * stature) list * (proof_method * play_outcome)) -> string)
   val get_minimizing_prover : Proof.context -> mode -> (thm list -> unit) -> string -> prover

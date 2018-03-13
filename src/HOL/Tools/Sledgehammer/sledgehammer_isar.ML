@@ -392,7 +392,7 @@ fun isar_proof_text ctxt debug num_chained isar_proofs smt_proofs isar_params
               if trace then
                 tracing (timestamp () ^ "\n" ^ label ^ ":\n\n" ^
                   string_of_isar_proof ctxt subgoal subgoal_count
-                    (comment_isar_proof comment_of proof) false ^ "\n")
+                    (comment_isar_proof comment_of proof) NONE ^ "\n")
               else
                 ()
 

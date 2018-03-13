@@ -48,7 +48,7 @@ sig
   val relabel_isar_proof_nicely : isar_proof -> isar_proof
   val rationalize_obtains_in_isar_proofs : Proof.context -> isar_proof -> isar_proof
 
-  val string_of_isar_proof : Proof.context -> int -> int -> isar_proof -> bool -> string
+  val string_of_isar_proof : Proof.context -> int -> int -> isar_proof -> int option -> string
 end;
 
 structure Sledgehammer_Isar_Proof : SLEDGEHAMMER_ISAR_PROOF =
@@ -371,9 +371,10 @@ fun string_of_isar_proof ctxt0 i n proof skip_prefer =
       |> add_steps ind steps
       |> fst
   in
-    (if i = 1 orelse skip_prefer then "" else "prefer " ^ string_of_int i ^ "\n") ^
+    (if i = 1 orelse is_some skip_prefer then "" else "prefer " ^ string_of_int i ^ "\n") ^
     of_indent 0 ^ "proof -\n" ^ of_proof 1 ctxt proof ^
-    of_indent 0 ^ (if n = 1 orelse i = n andalso skip_prefer then "qed" else "next")
+    of_indent 0 ^ (if n = 1 orelse i = n andalso case skip_prefer of SOME 0 => true | _ => false
+                   then "qed" else "next")
   end
 
 end;
