@@ -443,7 +443,7 @@ fun isar_proof_text ctxt debug num_chained isar_proofs smt_proofs isar_params
               in
                 one_line_proof_text ctxt 0 one_line_params ^
                 "\n\nIsar proof" ^ (commas msg |> not (null msg) ? enclose " (" ")") ^ ":\n" ^
-                subgoal_proof VM_prove_to_state
+                subgoal_proof VM_prove_to_state (NONE, play_outcome)
                   (string_of_isar_proof ctxt subgoal subgoal_count isar_proof)
               end)
           end

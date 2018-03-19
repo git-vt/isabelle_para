@@ -13,7 +13,7 @@ sig
   type fact_override = Sledgehammer_Fact.fact_override
   type proof_method = Sledgehammer_Proof_Methods.proof_method
   type play_outcome = Sledgehammer_Proof_Methods.play_outcome
-  type isar_vm_transition = Sledgehammer_Proof_Methods.isar_vm_transition
+  type show_outcome = Sledgehammer_Proof_Methods.show_outcome
   type mode = Sledgehammer_Prover.mode
   type params = Sledgehammer_Prover.params
 
@@ -26,9 +26,8 @@ sig
     proof_method * proof_method list list -> (string * stature) list * (proof_method * play_outcome)
   val string_of_factss : (string * fact list) list -> string
   val string_of_subgoal : int option -> string
-  val run_sledgehammer : params -> mode -> (string -> unit) option ->
-    (isar_vm_transition -> (int option -> string) -> string) -> int option -> fact_override ->
-    Proof.state -> bool * (string * string list)
+  val run_sledgehammer : params -> mode -> (string -> unit) option -> show_outcome -> int option ->
+    fact_override -> Proof.state -> bool * (string * string list)
 end;
 
 structure Sledgehammer : SLEDGEHAMMER =
@@ -308,7 +307,7 @@ fun run_sledgehammer (params as {verbose, spy, provers, max_facts, stop_on_first
               (state, i, "All", "Selected facts: " ^ spying_str_of_factss factss)))
           end
 
-        fun launch_provers found_proof par_list_map =
+        fun launch_provers () =
           let
             val factss = get_factss provers
             val problem =
@@ -325,22 +324,18 @@ fun run_sledgehammer (params as {verbose, spy, provers, max_facts, stop_on_first
             else
               (learn chained;
                provers
-               |> par_list_map (launch problem #> fst)
+               |> (if stop_on_first then
+                    fn launch_problem => 
+                      the_list o Par_List.get_some (fn prover =>
+                                   let val outcome_code = launch_problem prover
+                                   in if outcome_code = someN then SOME outcome_code else NONE end)
+                   else
+                     Par_List.map)
+                  (launch problem #> fst)
                |> max_outcome_code |> rpair [])
           end
       in
-        (if stop_on_first then
-           let val proof_found = Synchronized.var "proof_found_launch" false
-           in launch_provers
-                (fn _ => (Synchronized.change proof_found (K true); found_proof ()))
-                (fn launch_pb => fn l =>
-                   l |> Par_List.get_some (fn name =>
-                          let val outcome = launch_pb name
-                          in if Synchronized.value proof_found then SOME outcome else NONE end)
-                     |> the_list)
-           end
-         else
-           launch_provers found_proof Par_List.map)
+        launch_provers ()
         handle Timeout.TIMEOUT _ =>
           (print ("Sledgehammer ran out of time" ^ subgoalN); (unknownN, []))
       end

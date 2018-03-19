@@ -13,7 +13,7 @@ lemma assumes A B (*C*) D E F G (*H*)
  sledgehammer[stop_on_first, parallel_subgoals] 2
  sledgehammer[stop_on_first, parallel_subgoals] 8
  sledgehammer[parallel_subgoals]
- sledgehammer[parallel_subgoals, join_subgoals]
+ sledgehammer[parallel_subgoals, join_subgoals, verbose]
   \<comment> \<open>TODO: show the full reconstruction proof whenever @{command sledgehammer} is generating
             consecutive proofs of subgoals transitioning from the Isar VM prove to Isar VM state
             (and vice-versa).\<close>
