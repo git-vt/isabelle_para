@@ -14,6 +14,7 @@ sig
   type fact = Sledgehammer_Fact.fact
   type proof_method = Sledgehammer_Proof_Methods.proof_method
   type play_outcome = Sledgehammer_Proof_Methods.play_outcome
+  type show_outcome = Sledgehammer_Proof_Methods.show_outcome
   type isar_vm_transition = Sledgehammer_Proof_Methods.isar_vm_transition
 
   datatype mode = Auto_Try | Try | Normal | Minimize | MaSh
@@ -55,7 +56,7 @@ sig
      subgoal_count : int,
      factss : (string * fact list) list,
      found_proof : unit -> unit,
-     subgoal_proof : isar_vm_transition -> (int option -> string) -> string}
+     subgoal_proof : show_outcome}
 
   type prover_result =
     {outcome : atp_failure option,
@@ -144,7 +145,7 @@ type prover_problem =
    subgoal_count : int,
    factss : (string * fact list) list,
    found_proof : unit -> unit,
-   subgoal_proof : isar_vm_transition -> (int option -> string) -> string}
+   subgoal_proof : show_outcome}
 
 type prover_result =
   {outcome : atp_failure option,

@@ -13,7 +13,7 @@ sig
   type fact_override = Sledgehammer_Fact.fact_override
   type proof_method = Sledgehammer_Proof_Methods.proof_method
   type play_outcome = Sledgehammer_Proof_Methods.play_outcome
-  type isar_vm_transition = Sledgehammer_Proof_Methods.isar_vm_transition
+  type show_outcome = Sledgehammer_Proof_Methods.show_outcome
   type mode = Sledgehammer_Prover.mode
   type params = Sledgehammer_Prover.params
 
@@ -26,9 +26,8 @@ sig
     proof_method * proof_method list list -> (string * stature) list * (proof_method * play_outcome)
   val string_of_factss : (string * fact list) list -> string
   val string_of_subgoal : int option -> string
-  val run_sledgehammer : params -> mode -> (string -> unit) option ->
-    (isar_vm_transition -> (int option -> string) -> string) -> int option -> fact_override ->
-    Proof.state -> bool * (string * string list)
+  val run_sledgehammer : params -> mode -> (string -> unit) option -> show_outcome -> int option ->
+    fact_override -> Proof.state -> bool * (string * string list)
 end;
 
 structure Sledgehammer : SLEDGEHAMMER =

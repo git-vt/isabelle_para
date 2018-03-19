@@ -10,7 +10,7 @@ sig
   type stature = ATP_Problem_Generate.stature
   type proof_method = Sledgehammer_Proof_Methods.proof_method
   type play_outcome = Sledgehammer_Proof_Methods.play_outcome
-  type isar_vm_transition = Sledgehammer_Proof_Methods.isar_vm_transition
+  type show_outcome = Sledgehammer_Proof_Methods.show_outcome
   type mode = Sledgehammer_Prover.mode
   type params = Sledgehammer_Prover.params
   type prover = Sledgehammer_Prover.prover
@@ -22,8 +22,8 @@ sig
 
   val binary_min_facts : int Config.T
   val minimize_facts : (thm list -> unit) -> string -> params -> bool -> int -> int ->
-    (isar_vm_transition -> (int option -> string) -> string) -> Proof.state -> thm ->
-    ((string * stature) * thm list) list -> ((string * stature) * thm list) list option
+    show_outcome -> Proof.state -> thm -> ((string * stature) * thm list) list ->
+    ((string * stature) * thm list) list option
     * ((unit -> (string * stature) list * (proof_method * play_outcome)) -> string)
   val get_minimizing_prover : Proof.context -> mode -> (thm list -> unit) -> string -> prover
 end;

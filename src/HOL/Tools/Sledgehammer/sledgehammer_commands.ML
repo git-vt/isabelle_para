@@ -330,7 +330,7 @@ fun hammer_away_run params writeln_result fact_override subgoal_proof opt_i stat
 fun hammer_away override_params writeln_result subcommand opt_i fact_override thy st =
   if subcommand = runN then
     let
-      val params as {parallel_subgoals, join_subgoals, ...} =
+      val params as {parallel_subgoals, join_subgoals, verbose, ...} =
         get_params Normal thy (override_params
                                |> map (normalize_raw_param (Proof_Context.init_global thy)))
       val sledgehammer = hammer_away_run params writeln_result fact_override
@@ -341,8 +341,8 @@ fun hammer_away override_params writeln_result subcommand opt_i fact_override th
             map_range (fn i =>
                         let val i = i + 1
                             fun change_tab l = Synchronized.change tab o Inttab.map_default (i, l)
-                        in fn st => (sledgehammer (fn mode => fn f =>
-                                                   let val s = (mode, f)
+                        in fn st => (sledgehammer (fn mode => fn outcome => fn f =>
+                                                   let val s = (mode, (outcome, f))
                                                    in change_tab [s] (cons s);
                                                       Active.sendback_markup_command (f NONE) end)
                                                   (SOME i)
@@ -356,18 +356,34 @@ fun hammer_away override_params writeln_result subcommand opt_i fact_override th
                |> (fn tab =>
                     Inttab.fold
                       (fn (_, l) => fn (total_defer, defer, VM_in_state, l_tac) =>
-                        let fun f vm_in f_s = (total_defer, 0, vm_in,
-                                               let val s = f_s (SOME total_defer)
-                                               in if VM_in_state then "(*" ^ s ^ "*)" else s end
-                                               :: map_range (K "defer") defer @ l_tac)
+                        let fun f vm_in l_outcome =
+                              (total_defer, 0, vm_in,
+                               l_outcome
+                                 |> map (fn (_, (key, f_s)) => (key, f_s (SOME total_defer)))
+                                 |> Sledgehammer_Proof_Methods.sort_method_outcome
+                                 |> let val l_tac = map_range (K "defer") defer @ l_tac
+                                        fun comment0 s = "(* " ^ s ^ " *)"
+                                        fun verb ((_, out), s) =
+                                          if verbose then
+                                            s ^ " " ^ comment0
+                                             (Sledgehammer_Proof_Methods.string_of_play_outcome out)
+                                          else s
+                                        val comment = comment0 o verb
+                                    in fn [] => l_tac
+                                        | s :: l_outcome =>
+                                            fold
+                                              (if verbose then cons o comment else K I)
+                                              l_outcome
+                                              ((if VM_in_state then comment s else verb s) :: l_tac)
+                                    end)
                         in
                           case List.partition
-                                 (fn x => case x of
-                                   (Sledgehammer_Proof_Methods.VM_in_prove, _) => true | _ => false)
+                                 (fn (Sledgehammer_Proof_Methods.VM_in_prove, _) => true
+                                   | _ => false)
                                  l
                           of ([], []) => (total_defer + 1, defer + 1, VM_in_state, l_tac)
-                           | ((_, f_s) :: _, _) => f VM_in_state f_s
-                           | (_, (_, f_s) :: _) => f true f_s
+                           | (f_s as _ :: _, _) => f VM_in_state f_s
+                           | (_, f_s as _ :: _) => f true f_s
                         end)
                       tab
                       (0, 0, false, []))
