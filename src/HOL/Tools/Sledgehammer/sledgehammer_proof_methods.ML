@@ -9,6 +9,8 @@ signature SLEDGEHAMMER_PROOF_METHODS =
 sig
   type stature = ATP_Problem_Generate.stature
 
+  datatype isar_vm_transition = VM_in_prove | VM_prove_to_state
+
   datatype proof_method =
     Metis_Method of string option * string option |
     Meson_Method |
@@ -30,15 +32,22 @@ sig
     Play_Timed_Out of Time.time |
     Play_Failed
 
+  type method_outcome = proof_method option * play_outcome
+
+  type show_outcome = isar_vm_transition -> method_outcome -> (int option -> string) -> string
+
   type one_line_params =
-    ((string * stature) list * (proof_method * play_outcome)) * string * int * int
+    ((string * stature) list * (proof_method * play_outcome)) * string * int * int * show_outcome
 
   val is_proof_method_direct : proof_method -> bool
   val proof_method_distinguishes_chained_and_direct : proof_method -> bool
   val string_of_proof_method : Proof.context -> string list -> proof_method -> string
   val tac_of_proof_method : Proof.context -> thm list * thm list -> proof_method -> int -> tactic
   val string_of_play_outcome : play_outcome -> string
+  val proof_method_ord : proof_method option * proof_method option -> order
   val play_outcome_ord : play_outcome * play_outcome -> order
+  val method_outcome_ord : method_outcome * method_outcome -> order
+  val sort_method_outcome : (method_outcome * 'a) list -> (method_outcome * 'a) list
   val one_line_proof_text : Proof.context -> int -> one_line_params -> string
 end;
 
@@ -48,6 +57,8 @@ struct
 open ATP_Util
 open ATP_Problem_Generate
 open ATP_Proof_Reconstruct
+
+datatype isar_vm_transition = VM_in_prove | VM_prove_to_state
 
 datatype proof_method =
   Metis_Method of string option * string option |
@@ -70,8 +81,12 @@ datatype play_outcome =
   Play_Timed_Out of Time.time |
   Play_Failed
 
+type method_outcome = proof_method option * play_outcome
+
+type show_outcome = isar_vm_transition -> method_outcome -> (int option -> string) -> string
+
 type one_line_params =
-  ((string * stature) list * (proof_method * play_outcome)) * string * int * int
+  ((string * stature) list * (proof_method * play_outcome)) * string * int * int * show_outcome
 
 fun is_proof_method_direct (Metis_Method _) = true
   | is_proof_method_direct Meson_Method = true
@@ -150,6 +165,29 @@ fun string_of_play_outcome (Played time) = string_of_ext_time (false, time)
     if time = Time.zeroTime then "" else string_of_ext_time (true, time) ^ ", timed out"
   | string_of_play_outcome Play_Failed = "failed"
 
+val proof_method_ord = 
+  fn (NONE, NONE) => EQUAL
+   | (_, NONE) => LESS
+   | (NONE, _) => GREATER
+   | (SOME m1, SOME m2) =>
+     int_ord (apply2 (fn (* subjective ordering where any permutations are allowed,
+                            but small numbers will be prioritized to appear first *)
+                         Fastforce_Method => 1
+                       | Blast_Method => 2
+                       | Force_Method => 3
+                       | Simp_Size_Method => 4
+                       | Simp_Method => 5
+                       | Auto_Method => 6
+                       | Metis_Method _ => 7
+                       | Meson_Method => 8
+                       | SATx_Method => 9
+                       | Moura_Method => 10
+                       | Linarith_Method => 11
+                       | Presburger_Method => 12
+                       | Algebra_Method => 13
+                       | SMT_Method => 14)
+                     (m1, m2))
+
 fun play_outcome_ord (Played time1, Played time2) =
     int_ord (apply2 Time.toMilliseconds (time1, time2))
   | play_outcome_ord (Played _, _) = LESS
@@ -160,12 +198,25 @@ fun play_outcome_ord (Played time1, Played time2) =
   | play_outcome_ord (_, Play_Timed_Out _) = GREATER
   | play_outcome_ord (Play_Failed, Play_Failed) = EQUAL
 
-fun apply_on_subgoal _ 1 = "by "
-  | apply_on_subgoal 1 _ = "apply "
-  | apply_on_subgoal i n = "prefer " ^ string_of_int i ^ " " ^ apply_on_subgoal 1 n
+fun method_outcome_ord ((m1, t1), (m2, t2)) =
+  case play_outcome_ord (t1, t2) of EQUAL => proof_method_ord (m1, m2)
+                                  | x => x
+
+structure Outcome = Table (type key = method_outcome val ord = method_outcome_ord)
+
+fun sort_method_outcome l =
+  l |> List.partition ((fn (* delay the use of AFP's not recommended methods *)
+                           SOME SMT_Method => false | _ => true) o fst o fst)
+    |> apply2 (Outcome.dest_list o Outcome.make_list)
+    |> op @
+
+fun apply_on_subgoal i n skip_prefer =
+  (if i = 1 orelse is_some skip_prefer then "" else "prefer " ^ string_of_int i ^ " ") ^
+  (if n = 1 orelse i = n andalso case skip_prefer of SOME 0 => true | _ => false
+   then "by " else "apply ")
 
 (* FIXME *)
-fun proof_method_command ctxt meth i n used_chaineds _(*num_chained*) extras =
+fun proof_method_command ctxt meth i n used_chaineds _(*num_chained*) extras skip_prefer =
   let
     val (indirect_ss, direct_ss) =
       if is_proof_method_direct meth then
@@ -174,23 +225,23 @@ fun proof_method_command ctxt meth i n used_chaineds _(*num_chained*) extras =
         (extras, [])
   in
     (if null indirect_ss then "" else "using " ^ space_implode " " indirect_ss ^ " ") ^
-    apply_on_subgoal i n ^ string_of_proof_method ctxt direct_ss meth ^
+    apply_on_subgoal i n skip_prefer ^ string_of_proof_method ctxt direct_ss meth ^
     (if is_proof_method_multi_goal meth andalso n <> 1 then "[1]" else "")
   end
 
-fun try_command_line banner play command =
+fun try_command_line subgoal_proof banner (meth, play) command =
   let val s = string_of_play_outcome play in
-    banner ^ ": " ^ Active.sendback_markup_command command ^
+    banner ^ ": " ^ subgoal_proof VM_in_prove (SOME meth, play) command ^
     (s |> s <> "" ? enclose " (" ")")
   end
 
 fun one_line_proof_text ctxt num_chained
-    ((used_facts, (meth, play)), banner, subgoal, subgoal_count) =
+    ((used_facts, (meth, play)), banner, subgoal, subgoal_count, subgoal_proof) =
   let val (chained, extra) = List.partition (fn (_, (sc, _)) => sc = Chained) used_facts in
     map fst extra
     |> proof_method_command ctxt meth subgoal subgoal_count (map fst chained) num_chained
-    |> (if play = Play_Failed then prefix "One-line proof reconstruction failed: "
-        else try_command_line banner play)
+    |> (if play = Play_Failed then fn f => prefix "One-line proof reconstruction failed: " (f NONE)
+        else try_command_line subgoal_proof banner (meth, play))
   end
 
 end;

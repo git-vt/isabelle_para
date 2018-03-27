@@ -13,6 +13,7 @@ sig
   type fact_override = Sledgehammer_Fact.fact_override
   type proof_method = Sledgehammer_Proof_Methods.proof_method
   type play_outcome = Sledgehammer_Proof_Methods.play_outcome
+  type show_outcome = Sledgehammer_Proof_Methods.show_outcome
   type mode = Sledgehammer_Prover.mode
   type params = Sledgehammer_Prover.params
 
@@ -24,8 +25,9 @@ sig
   val play_one_line_proof : bool -> Time.time -> (string * stature) list -> Proof.state -> int ->
     proof_method * proof_method list list -> (string * stature) list * (proof_method * play_outcome)
   val string_of_factss : (string * fact list) list -> string
-  val run_sledgehammer : params -> mode -> (string -> unit) option -> int -> fact_override ->
-    Proof.state -> bool * (string * string list)
+  val string_of_subgoal : int option -> string
+  val run_sledgehammer : params -> mode -> (string -> unit) option -> show_outcome -> int option ->
+    fact_override -> Proof.state -> bool * (string * string list)
 end;
 
 structure Sledgehammer : SLEDGEHAMMER =
@@ -110,8 +112,9 @@ fun play_one_line_proof minimize timeout used_facts state i (preferred_meth, met
          (meth, play)))
 
 fun launch_prover (params as {debug, verbose, spy, max_facts, minimize, timeout, preplay_timeout,
-      expect, ...}) mode writeln_result only learn
-    {comment, state, goal, subgoal, subgoal_count, factss as (_, facts) :: _, found_proof} name =
+      expect, parallel_subgoals, ...}) mode writeln_result only learn
+    {comment, state, goal, subgoal, subgoal_count, factss as (_, facts) :: _,
+     found_proof, subgoal_proof} name =
   let
     val ctxt = Proof.context_of state
 
@@ -127,7 +130,7 @@ fun launch_prover (params as {debug, verbose, spy, max_facts, minimize, timeout,
        |> map (apsnd ((not (is_ho_atp ctxt name)
            ? filter_out (fn ((_, (_, Induction)), _) => true | _ => false))
          #> take num_facts)),
-       found_proof = found_proof}
+       found_proof = found_proof, subgoal_proof = subgoal_proof}
 
     fun print_used_facts used_facts used_from =
       tag_list 1 used_from
@@ -217,10 +220,13 @@ fun launch_prover (params as {debug, verbose, spy, max_facts, minimize, timeout,
       let
         val (outcome_code, message) = Timeout.apply hard_timeout go ()
         val outcome =
-          if outcome_code = someN orelse mode = Normal then quote name ^ ": " ^ message () else ""
+          if outcome_code = someN orelse mode = Normal then
+            (if parallel_subgoals then "  (subgoal " ^ Int.toString subgoal ^ ") " else "")
+            ^ quote name ^ ": " ^ message ()
+          else ""
         val _ =
           if outcome <> "" andalso is_some writeln_result then the writeln_result outcome
-          else writeln outcome
+          else writeln ((if parallel_subgoals then Markup.markup Markup.intensify else I) outcome)
       in (outcome_code, []) end
   end
 
@@ -237,8 +243,11 @@ fun string_of_factss factss =
     cat_lines (map (fn (filter, facts) =>
       (if filter = "" then "" else quote filter ^ ": ") ^ string_of_facts facts) factss)
 
-fun run_sledgehammer (params as {verbose, spy, provers, max_facts, ...}) mode writeln_result i
-    (fact_override as {only, ...}) state =
+val string_of_subgoal = fn NONE => ""
+                         | SOME i => " for subgoal " ^ Int.toString i
+
+fun run_sledgehammer (params as {verbose, spy, provers, max_facts, stop_on_first, ...})
+    mode writeln_result subgoal_proof opt_i (fact_override as {only, ...}) state =
   if null provers then
     error "No prover is set"
   else
@@ -246,6 +255,7 @@ fun run_sledgehammer (params as {verbose, spy, provers, max_facts, ...}) mode wr
       0 => (error "No subgoal!"; (false, (noneN, [])))
     | n =>
       let
+        val subgoalN = string_of_subgoal opt_i
         val _ = Proof.assert_backward state
         val print = if mode = Normal andalso is_none writeln_result then writeln else K ()
 
@@ -254,7 +264,7 @@ fun run_sledgehammer (params as {verbose, spy, provers, max_facts, ...}) mode wr
             let val proof_found = Synchronized.var "proof_found" false in
               fn () =>
                 if Synchronized.change_result proof_found (rpair true) then ()
-                else (writeln_result |> the_default writeln) "Proof found..."
+                else (writeln_result |> the_default writeln) ("Proof found" ^ subgoalN ^ "...")
             end
           else
             I
@@ -262,6 +272,7 @@ fun run_sledgehammer (params as {verbose, spy, provers, max_facts, ...}) mode wr
         val ctxt = Proof.context_of state
         val keywords = Thy_Header.get_keywords' ctxt
         val {facts = chained, goal, ...} = Proof.goal state
+        val i = the_default 1 opt_i
         val (_, hyp_ts, concl_t) = strip_subgoal goal i ctxt
         val ho_atp = exists (is_ho_atp ctxt) provers
         val css = clasimpset_rule_table_of ctxt
@@ -271,7 +282,7 @@ fun run_sledgehammer (params as {verbose, spy, provers, max_facts, ...}) mode wr
           (case find_first (not o is_prover_supported ctxt) provers of
             SOME name => error ("No such prover: " ^ name)
           | NONE => ())
-        val _ = print "Sledgehammering..."
+        val _ = print ("Sledgehammering" ^ subgoalN ^ "...")
         val _ = spying spy (fn () => (state, i, "***", "Starting " ^ str_of_mode mode ^ " mode"))
 
         val spying_str_of_factss =
@@ -301,7 +312,7 @@ fun run_sledgehammer (params as {verbose, spy, provers, max_facts, ...}) mode wr
             val factss = get_factss provers
             val problem =
               {comment = "", state = state, goal = goal, subgoal = i, subgoal_count = n,
-               factss = factss, found_proof = found_proof}
+               factss = factss, found_proof = found_proof, subgoal_proof = subgoal_proof}
             val learn = mash_learn_proof ctxt params (Thm.prop_of goal) all_facts
             val launch = launch_prover params mode writeln_result only learn
           in
@@ -313,13 +324,20 @@ fun run_sledgehammer (params as {verbose, spy, provers, max_facts, ...}) mode wr
             else
               (learn chained;
                provers
-               |> Par_List.map (launch problem #> fst)
+               |> (if stop_on_first then
+                    fn launch_problem => 
+                      the_list o Par_List.get_some (fn prover =>
+                                   let val outcome_code = launch_problem prover
+                                   in if outcome_code = someN then SOME outcome_code else NONE end)
+                   else
+                     Par_List.map)
+                  (launch problem #> fst)
                |> max_outcome_code |> rpair [])
           end
       in
         launch_provers ()
         handle Timeout.TIMEOUT _ =>
-          (print "Sledgehammer ran out of time"; (unknownN, []))
+          (print ("Sledgehammer ran out of time" ^ subgoalN); (unknownN, []))
       end
       |> `(fn (outcome_code, _) => outcome_code = someN))
 

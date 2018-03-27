@@ -148,7 +148,8 @@ val rewrite_methods = basic_simp_based_methods @ basic_systematic_methods @ basi
 val skolem_methods = Moura_Method :: systematic_methods
 
 fun isar_proof_text ctxt debug num_chained isar_proofs smt_proofs isar_params
-    (one_line_params as ((used_facts, (_, one_line_play)), banner, subgoal, subgoal_count)) =
+    (one_line_params as ((used_facts, (_, one_line_play)),
+                         banner, subgoal, subgoal_count, subgoal_proof)) =
   let
     val _ = if debug then writeln "Constructing Isar proof..." else ()
 
@@ -391,7 +392,7 @@ fun isar_proof_text ctxt debug num_chained isar_proofs smt_proofs isar_params
               if trace then
                 tracing (timestamp () ^ "\n" ^ label ^ ":\n\n" ^
                   string_of_isar_proof ctxt subgoal subgoal_count
-                    (comment_isar_proof comment_of proof) ^ "\n")
+                    (comment_isar_proof comment_of proof) NONE ^ "\n")
               else
                 ()
 
@@ -427,7 +428,8 @@ fun isar_proof_text ctxt debug num_chained isar_proofs smt_proofs isar_params
                        val used_facts' = filter (fn (s, (sc, _)) =>
                          member (op =) gfs s andalso sc <> Chained) used_facts
                      in
-                       ((used_facts', (meth, play_outcome)), banner, subgoal, subgoal_count)
+                       ((used_facts', (meth, play_outcome)),
+                        banner, subgoal, subgoal_count, subgoal_proof)
                      end)
                  else
                    one_line_params) ^
@@ -441,7 +443,7 @@ fun isar_proof_text ctxt debug num_chained isar_proofs smt_proofs isar_params
               in
                 one_line_proof_text ctxt 0 one_line_params ^
                 "\n\nIsar proof" ^ (commas msg |> not (null msg) ? enclose " (" ")") ^ ":\n" ^
-                Active.sendback_markup_command
+                subgoal_proof VM_prove_to_state (NONE, play_outcome)
                   (string_of_isar_proof ctxt subgoal subgoal_count isar_proof)
               end)
           end
@@ -464,7 +466,7 @@ fun isar_proof_would_be_a_good_idea smt_proofs (meth, play) =
   | Play_Failed => true)
 
 fun proof_text ctxt debug isar_proofs smt_proofs isar_params num_chained
-    (one_line_params as ((_, preplay), _, _, _)) =
+    (one_line_params as ((_, preplay), _, _, _, _)) =
   (if isar_proofs = SOME true orelse
       (isar_proofs = NONE andalso isar_proof_would_be_a_good_idea smt_proofs preplay) then
      isar_proof_text ctxt debug num_chained isar_proofs smt_proofs isar_params
