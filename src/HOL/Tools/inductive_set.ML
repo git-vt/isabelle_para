@@ -394,7 +394,7 @@ val to_set_att = Thm.rule_attribute [] o to_set;
 (**** definition of inductive sets ****)
 
 fun add_ind_set_def
-    {quiet_mode, verbose, alt_name, coind, no_elim, no_ind, skip_mono}
+    {quiet_mode, verbose, alt_name, coind, no_elim, no_elim', no_ind0, no_eqs, no_ind, skip_mono}
     cs intros monos params cnames_syn lthy =
   let
     val thy = Proof_Context.theory_of lthy;
@@ -467,7 +467,8 @@ fun add_ind_set_def
     val ({preds, intrs, elims, raw_induct, eqs, ...}, lthy1) =
       Inductive.add_ind_def
         {quiet_mode = quiet_mode, verbose = verbose, alt_name = Binding.empty,
-          coind = coind, no_elim = no_elim, no_ind = no_ind, skip_mono = skip_mono}
+          coind = coind, no_elim = no_elim, no_elim' = no_elim', no_ind0 = no_ind0, no_eqs = no_eqs,
+          no_ind = no_ind, skip_mono = skip_mono}
         cs' intros' monos' params1 cnames_syn' lthy;
 
     (* define inductive sets using previously defined predicates *)
@@ -505,7 +506,7 @@ fun add_ind_set_def
     val (intr_names, intr_atts) = split_list (map fst intros);
     val raw_induct' = to_set [] (Context.Proof lthy3) raw_induct;
     val (intrs', elims', eqs', induct, inducts, lthy4) =
-      Inductive.declare_rules rec_name coind no_ind cnames (map fst defs)
+      Inductive.declare_rules rec_name coind no_elim' no_ind0 no_eqs no_ind cnames (map fst defs)
         (map (to_set [] (Context.Proof lthy3)) intrs) intr_names intr_atts
         (map (fn th => (to_set [] (Context.Proof lthy3) th,
            map (fst o fst) (fst (Rule_Cases.get th)),

@@ -446,6 +446,9 @@ fun inductive_def (binding as ((R, T), _)) intrs lthy =
             alt_name = Binding.empty,
             coind = false,
             no_elim = false,
+            no_elim' = false,
+            no_ind0 = false,
+            no_eqs = false,
             no_ind = false,
             skip_mono = true}
           [binding] (* relation *)

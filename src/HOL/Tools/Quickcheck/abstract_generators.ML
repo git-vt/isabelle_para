@@ -46,7 +46,7 @@ fun gen_quickcheck_generator prep_tyco prep_term tyco_raw opt_pred_raw constrs_r
     fun ensure_sort (sort, instantiate) =
       Quickcheck_Common.ensure_sort
         (((@{sort typerep}, @{sort term_of}), sort), (the_descr, instantiate))
-        Old_Datatype_Aux.default_config [tyco]
+        (Old_Datatype_Aux.default_config 0) [tyco]
   in
     thy
     |> ensure_sort

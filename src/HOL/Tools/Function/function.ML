@@ -251,7 +251,8 @@ val termination_cmd = gen_termination Syntax.read_term
 
 (* Datatype hook to declare datatype congs as "function_congs" *)
 
-fun add_case_cong n thy =
+fun add_case_cong config n =
+  if #skip_level config >= 1 then I else fn thy =>
   let
     val cong = #case_cong (Old_Datatype_Data.the_info thy n)
       |> safe_mk_meta_eq
@@ -259,7 +260,7 @@ fun add_case_cong n thy =
     Context.theory_map (Function_Context_Tree.add_function_cong cong) thy
   end
 
-val _ = Theory.setup (Old_Datatype_Data.interpretation (K (fold add_case_cong)))
+val _ = Theory.setup (Old_Datatype_Data.interpretation (fold o add_case_cong))
 
 
 (* get info *)

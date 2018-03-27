@@ -308,7 +308,9 @@ fun add_ind_realizer rsets intrs induct raw_induct elims vs thy =
 
     val ((dummies, some_dt_names), thy2) =
       thy1
-      |> add_dummies (Old_Datatype.add_datatype {strict = false, quiet = false})
+      |> add_dummies (Old_Datatype.add_datatype
+                       let val config = Old_Datatype_Aux.default_config 0 in
+                       {strict = false, quiet = #quiet config, skip_level = #skip_level config} end)
         (map (pair false) dts) []
       ||> Extraction.add_typeof_eqns_i ty_eqs
       ||> Extraction.add_realizes_eqns_i rlz_eqs;
@@ -354,7 +356,8 @@ fun add_ind_realizer rsets intrs induct raw_induct elims vs thy =
     val (ind_info, thy3') = thy2 |>
       Inductive.add_inductive_global
         {quiet_mode = false, verbose = false, alt_name = Binding.empty, coind = false,
-          no_elim = false, no_ind = false, skip_mono = false}
+          no_elim = false, no_elim' = false, no_ind0 = false, no_eqs = false, no_ind = false,
+          skip_mono = false}
         rlzpreds rlzparams (map (fn (rintr, intr) =>
           ((Binding.name (Long_Name.base_name (name_of_thm intr)), []),
            subst_atomic rlzpreds' (Logic.unvarify_global rintr)))
