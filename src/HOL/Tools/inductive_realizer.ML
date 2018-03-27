@@ -309,7 +309,7 @@ fun add_ind_realizer rsets intrs induct raw_induct elims vs thy =
     val ((dummies, some_dt_names), thy2) =
       thy1
       |> add_dummies (Old_Datatype.add_datatype
-                       let val config = Old_Datatype_Aux.default_config 0 in
+                       let val config = Old_Datatype_Aux.default_config in
                        {strict = false, quiet = #quiet config, skip_level = #skip_level config} end)
         (map (pair false) dts) []
       ||> Extraction.add_typeof_eqns_i ty_eqs
