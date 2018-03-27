@@ -451,7 +451,7 @@ fun new_interpretation_of prefs f (fp_sugars : fp_sugar list) thy =
     if (member (op =) prefs Include_GFPs orelse forall (curry (op =) Least_FP o #fp) fp_sugars)
        andalso (member (op =) prefs Keep_Nesting orelse
          exists (is_none o Old_Datatype_Data.get_info thy) T_names) then
-      f (Old_Datatype_Aux.default_config 0) T_names thy
+      f Old_Datatype_Aux.default_config T_names thy
     else
       thy
   end;
@@ -497,7 +497,7 @@ fun datatype_compat fpT_names lthy =
 
     val register_interpret =
       Old_Datatype_Data.register infos
-      #> Old_Datatype_Data.interpretation_data (Old_Datatype_Aux.default_config 0, map fst infos);
+      #> Old_Datatype_Data.interpretation_data (Old_Datatype_Aux.default_config, map fst infos);
   in
     lthy'
     |> Local_Theory.raw_theory register_interpret
