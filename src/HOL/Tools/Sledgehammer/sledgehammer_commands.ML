@@ -374,7 +374,7 @@ fun hammer_away override_params writeln_result subcommand opt_i fact_override th
                                             fold
                                               (if verbose then cons o comment else K I)
                                               l_outcome
-                                              ((if VM_in_state then comment s else verb s) :: l_tac)
+                                              ((if VM_in_state then comment else verb) s :: l_tac)
                                     end)
                         in
                           case List.partition
@@ -389,6 +389,7 @@ fun hammer_away override_params writeln_result subcommand opt_i fact_override th
                       (0, 0, false, []))
                |> #4 |> rev
                |> (fn [] => ()
+                    | [_] => ()
                     | l => 
                       ("In summary: " ^ Active.sendback_markup_command (String.concatWith "\n" l))
                       |> Markup.markup Markup.intensify
