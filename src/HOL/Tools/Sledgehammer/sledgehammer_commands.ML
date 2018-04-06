@@ -327,6 +327,14 @@ fun hammer_away_run params writeln_result fact_override subgoal_proof opt_i stat
   | (_, (s, _)) =>
       writeln (Markup.markup (Markup.bad ()) ("Proof status" ^ string_of_subgoal opt_i ^ ": " ^ s))
 
+structure Step =
+  Table (type key = Sledgehammer_Proof_Methods.vm_step_prove
+         val ord = Sledgehammer_Proof_Methods.vm_step_prove_ord)
+
+structure Play =
+  Table (type key = Sledgehammer_Proof_Methods.play_outcome
+         val ord = Sledgehammer_Proof_Methods.play_outcome_ord)
+
 fun hammer_away override_params writeln_result subcommand opt_i fact_override thy st =
   if subcommand = runN then
     let
@@ -356,14 +364,21 @@ fun hammer_away override_params writeln_result subcommand opt_i fact_override th
                |> (fn tab =>
                     Inttab.fold
                       (fn (_, l) => fn (total_defer, defer, VM_in_state, l_tac) =>
-                        let fun f vm_in l_outcome =
+                        let fun f vm_in l_outcome1 l_outcome2 =
                               (total_defer, 0, vm_in,
-                               l_outcome
-                                 |> map (fn (_, (key, f_s)) => (key, f_s (SOME total_defer)))
-                                 |> Sledgehammer_Proof_Methods.sort_method_outcome
+                               ( (l_outcome1
+                                   |> Step.make_list
+                                   |> Step.map (K (fn l => l |> Play.make_list
+                                                             |> Play.min
+                                                             |> (fn SOME (k, v :: _) => (k, v))))
+                                   |> Step.dest
+                                   |> map (fn (m, (k, f_s)) => ((m, k), f_s (SOME total_defer)))
+                                   |> Sledgehammer_Proof_Methods.sort_method_outcome
+                                   |> map (fn ((_, key), s) => (key, s)))
+                               @ map (fn (_, (key, f)) => (key, f (SOME total_defer))) l_outcome2)
                                  |> let val l_tac = map_range (K "defer") defer @ l_tac
                                         fun comment0 s = "(* " ^ s ^ " *)"
-                                        fun verb ((_, out), s) =
+                                        fun verb (out, s) =
                                           if verbose then
                                             s ^ " " ^ comment0
                                              (Sledgehammer_Proof_Methods.string_of_play_outcome out)
@@ -377,13 +392,18 @@ fun hammer_away override_params writeln_result subcommand opt_i fact_override th
                                               ((if VM_in_state then comment else verb) s :: l_tac)
                                     end)
                         in
-                          case List.partition
-                                 (fn (Sledgehammer_Proof_Methods.VM_in_prove, _) => true
-                                   | _ => false)
-                                 l
+                          case
+                           (map_filter
+                              (fn (Sledgehammer_Proof_Methods.VM_in_prove k, v) => SOME (k, v)
+                                | _ => NONE)
+                              l,
+                            map_filter
+                              (fn (Sledgehammer_Proof_Methods.VM_prove_to_state k, v) => SOME (k, v)
+                                | _ => NONE)
+                              l)
                           of ([], []) => (total_defer + 1, defer + 1, VM_in_state, l_tac)
-                           | (f_s as _ :: _, _) => f VM_in_state f_s
-                           | (_, f_s as _ :: _) => f true f_s
+                           | (l1 as _ :: _, l2) => f VM_in_state l1 l2
+                           | (l1, l2 as _ :: _) => f true l1 l2
                         end)
                       tab
                       (0, 0, false, []))
