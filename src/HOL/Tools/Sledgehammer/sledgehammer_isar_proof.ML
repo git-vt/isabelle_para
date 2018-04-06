@@ -9,18 +9,10 @@ for dealing with Isar proof texts.
 signature SLEDGEHAMMER_ISAR_PROOF =
 sig
   type proof_method = Sledgehammer_Proof_Methods.proof_method
-
-  type label = string * int
-  type facts = label list * string list (* local and global facts *)
-
-  datatype isar_qualifier = Show | Then
-
-  datatype isar_proof =
-    Proof of (string * typ) list * (label * term) list * isar_step list
-  and isar_step =
-    Let of term * term |
-    Prove of isar_qualifier list * (string * typ) list * label * term * isar_proof list
-      * facts * proof_method list * string
+  type label = Sledgehammer_Proof_Methods.label
+  type facts = Sledgehammer_Proof_Methods.facts
+  type isar_proof = Sledgehammer_Proof_Methods.isar_proof
+  type isar_step = Sledgehammer_Proof_Methods.isar_step
 
   val no_label : label
 
@@ -61,18 +53,6 @@ open ATP_Proof_Reconstruct
 open Sledgehammer_Util
 open Sledgehammer_Proof_Methods
 open Sledgehammer_Isar_Annotate
-
-type label = string * int
-type facts = label list * string list (* local and global facts *)
-
-datatype isar_qualifier = Show | Then
-
-datatype isar_proof =
-  Proof of (string * typ) list * (label * term) list * isar_step list
-and isar_step =
-  Let of term * term |
-  Prove of isar_qualifier list * (string * typ) list * label * term * isar_proof list
-    * facts * proof_method list * string
 
 val no_label = ("", ~1)
 
