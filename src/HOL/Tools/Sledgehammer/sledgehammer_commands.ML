@@ -478,8 +478,9 @@ val parse_fact_override =
 val _ =
   Outer_Syntax.commands' @{command_keyword sledgehammer}
     "search for first-order proof using automatic theorem provers"
-    (Scan.optional Parse.name runN -- parse_params
-      -- parse_fact_override -- Scan.option Parse.nat >>
+    ((Parse.nat >> (fn i => (((runN, []), no_fact_override), SOME i))
+      || Scan.optional Parse.name runN -- parse_params
+          -- parse_fact_override -- Scan.option Parse.nat) >>
       (fn (((subcommand, params), fact_override), opt_i) =>
         map (fn f => (@{command_keyword sledgehammer}, Toplevel.keep_proof (f o Toplevel.proof_of)))
         oo hammer_away params NONE subcommand opt_i fact_override))
