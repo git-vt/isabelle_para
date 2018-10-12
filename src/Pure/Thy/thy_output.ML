@@ -10,7 +10,7 @@ sig
   val check_comments: Proof.context -> Symbol_Pos.T list -> unit
   val output_token: Proof.context -> Token.T -> Latex.text list
   val output_source: Proof.context -> string -> Latex.text list
-  type segment = {span: Command_Span.span, command: Toplevel.transition, state: Toplevel.state}
+  type segment = {span: Command_Span.span, command: Toplevel.transitions, state: Toplevel.state}
   val present_thy: Options.T -> theory -> segment list -> Latex.text list
   val pretty_term: Proof.context -> term -> Pretty.T
   val pretty_thm: Proof.context -> thm -> Pretty.T
@@ -365,7 +365,7 @@ val locale =
 
 in
 
-type segment = {span: Command_Span.span, command: Toplevel.transition, state: Toplevel.state};
+type segment = {span: Command_Span.span, command: Toplevel.transitions, state: Toplevel.state};
 
 fun present_thy options thy (segments: segment list) =
   let
@@ -450,8 +450,9 @@ fun present_thy options thy (segments: segment list) =
 
     val command_tag = make_command_tag options keywords;
 
-    fun present_command tr span st st' =
-      Toplevel.setmp_thread_position tr (present_span thy command_tag span st st');
+    fun present_command trs span st st' =
+      Toplevel.setmp_thread_position (hd trs)
+        (present_span thy command_tag span st st');
 
     fun present _ [] = I
       | present st ((span, (tr, st')) :: rest) = present_command tr span st st' #> present st' rest;
