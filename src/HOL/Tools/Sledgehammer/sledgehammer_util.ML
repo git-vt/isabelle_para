@@ -24,6 +24,7 @@ sig
   val one_year : Time.time
   val hackish_string_of_term : Proof.context -> term -> string
   val spying : bool -> (unit -> Proof.state * int * string * string) -> unit
+  val sendback_cmd : 'a -> 'b -> (int option -> string) -> string
 end;
 
 structure Sledgehammer_Util : SLEDGEHAMMER_UTIL =
@@ -156,5 +157,7 @@ fun spying false _ = ()
       File.append (Path.explode "$ISABELLE_HOME_USER/spy_sledgehammer")
         (spying_version ^ " " ^ timestamp () ^ ": " ^ hash ^ ": " ^ tool ^ ": " ^ message ^ "\n")
     end
+
+fun sendback_cmd _ _ f = Active.sendback_markup_command (f NONE)
 
 end;
