@@ -9,3 +9,5 @@ src/HOL/SPARK
 src/HOL/Tools
 src/HOL/Tools/ATP
 src/HOL/TPTP
+#bundled components
+contrib/haskabelle
