@@ -192,7 +192,8 @@ fun contains_recursive_type_under_function_types xs =
     (case Old_Datatype_Aux.strip_dtyp dT of (_ :: _, Old_Datatype_Aux.DtRec _) => true | _ => false)))) xs
 
 fun instantiate_datatype (name, constprfx, sort, mk_equations, mk_T, argnames)
-    config descr vs tycos prfx (names, auxnames) (Ts, Us) thy =
+    config descr vs tycos prfx (names, auxnames) (Ts, Us) =
+  if #skip_level config >= 1 then I else fn thy =>
   if not (contains_recursive_type_under_function_types descr) then
     let
       val _ = Old_Datatype_Aux.message config ("Creating " ^ name ^ "...")

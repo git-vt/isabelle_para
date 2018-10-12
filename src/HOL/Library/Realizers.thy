@@ -5,10 +5,6 @@
 section \<open>Program extraction from proofs involving datatypes and inductive predicates\<close>
 
 theory Realizers
-imports Main
+imports Old_Datatype
 begin
-
-ML_file "~~/src/HOL/Tools/datatype_realizer.ML"
-ML_file "~~/src/HOL/Tools/inductive_realizer.ML"
-
 end

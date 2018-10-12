@@ -405,7 +405,8 @@ fun perhaps_constrain thy insts raw_vs =
   in SOME (fn (v, _) => (v, (the o Vartab.lookup vtab) (v, 0))) end
   handle Sorts.CLASS_ERROR _ => NONE
 
-fun ensure_sort (((sort_vs, aux_sort), sort), (the_descr, instantiate)) config raw_tycos thy =
+fun ensure_sort (((sort_vs, aux_sort), sort), (the_descr, instantiate)) config raw_tycos =
+  if #skip_level config >= 1 then I else fn thy =>
   (case try (the_descr thy) raw_tycos of
     NONE => thy
   | SOME (descr, raw_vs, tycos, prfx, (names, auxnames), raw_TUs) =>

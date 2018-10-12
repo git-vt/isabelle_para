@@ -228,7 +228,8 @@ fun make_casedists ({index, descr, case_name, case_rewrites, exhaust, ...} : Old
        (exh_name, ([], Extraction.nullt, prf'))] thy'
   end;
 
-fun add_dt_realizers config names thy =
+fun add_dt_realizers config names =
+  if #skip_level config >= 1 then I else fn thy =>
   if not (Proofterm.proofs_enabled ()) then thy
   else
     let

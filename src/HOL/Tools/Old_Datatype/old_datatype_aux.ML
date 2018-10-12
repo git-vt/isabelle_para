@@ -6,8 +6,9 @@ Datatype package: auxiliary data structures and functions.
 
 signature OLD_DATATYPE_COMMON =
 sig
-  type config = {strict : bool, quiet : bool}
+  type config = {strict : bool, quiet : bool, skip_level : int}
   val default_config : config
+  val default_config' : int -> config
   datatype dtyp =
       DtTFree of string * sort
     | DtType of string * dtyp list
@@ -74,6 +75,7 @@ sig
   val interpret_construction : descr -> (string * sort) list ->
     {atyp: typ -> 'a, dtyp: typ list -> int * bool -> string * typ list -> 'a} ->
     ((string * typ list) * (string * 'a list) list) list
+  val check_nonempty : descr list -> unit
   val unfold_datatypes : Proof.context -> descr -> info Symtab.table ->
     descr -> int -> descr list * int
   val find_shortest_path : descr -> int -> (string * int) option
@@ -84,8 +86,9 @@ struct
 
 (* datatype option flags *)
 
-type config = {strict : bool, quiet : bool};
-val default_config : config = {strict = true, quiet = false};
+type config = {strict : bool, quiet : bool, skip_level : int};
+fun default_config' i : config = {strict = true, quiet = false, skip_level = i};
+val default_config : config = default_config' 0;
 
 fun message ({quiet = true, ...} : config) s = writeln s
   | message _ _ = ();
@@ -299,6 +302,23 @@ fun interpret_construction descr vs {atyp, dtyp} =
     fun interpC (c, dTs) = (c, map interpT dTs);
     fun interpD (_, (tyco, dTs, cs)) = ((tyco, map typ_of dTs), map interpC cs);
   in map interpD descr end;
+
+(* nonemptiness check for datatypes *)
+
+fun check_nonempty descr =
+  let
+    val descr' = flat descr;
+    fun is_nonempty_dt is i =
+      let
+        val (_, _, constrs) = the (AList.lookup (op =) descr' i);
+        fun arg_nonempty (_, DtRec i) =
+              if member (op =) is i then false
+              else is_nonempty_dt (i :: is) i
+          | arg_nonempty _ = true;
+      in exists (forall (arg_nonempty o strip_dtyp) o snd) constrs end
+    val _ = hd descr |> forall (fn (i, (s, _, _)) =>
+      is_nonempty_dt [i] i orelse raise Datatype_Empty s)
+  in () end;
 
 (* unfold a list of mutually recursive datatype specifications *)
 (* all types of the form DtType (dt_name, [..., DtRec _, ...]) *)
