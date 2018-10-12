@@ -133,7 +133,8 @@ fun run_atp mode name
     ({debug, verbose, overlord, type_enc, strict, lam_trans, uncurried_aliases, fact_filter,
      max_facts, max_mono_iters, max_new_mono_instances, isar_proofs, compress, try0, smt_proofs,
      slice, minimize, timeout, preplay_timeout, ...} : params)
-    ({comment, state, goal, subgoal, subgoal_count, factss, found_proof, ...} : prover_problem) =
+    ({comment, state, goal, subgoal, subgoal_count, factss, found_proof, subgoal_proof,
+      ...} : prover_problem) =
   let
     val thy = Proof.theory_of state
     val ctxt = Proof.context_of state
@@ -395,7 +396,8 @@ fun run_atp mode name
                      minimize, atp_proof, goal)
                   end
 
-                val one_line_params = (preplay (), proof_banner mode name, subgoal, subgoal_count)
+                val one_line_params = (preplay (), proof_banner mode name,
+                                       subgoal, subgoal_count, subgoal_proof)
                 val num_chained = length (#facts (Proof.goal state))
               in
                 proof_text ctxt debug isar_proofs smt_proofs isar_params num_chained

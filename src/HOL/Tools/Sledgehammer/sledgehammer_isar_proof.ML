@@ -9,18 +9,10 @@ for dealing with Isar proof texts.
 signature SLEDGEHAMMER_ISAR_PROOF =
 sig
   type proof_method = Sledgehammer_Proof_Methods.proof_method
-
-  type label = string * int
-  type facts = label list * string list (* local and global facts *)
-
-  datatype isar_qualifier = Show | Then
-
-  datatype isar_proof =
-    Proof of (string * typ) list * (label * term) list * isar_step list
-  and isar_step =
-    Let of term * term |
-    Prove of isar_qualifier list * (string * typ) list * label * term * isar_proof list
-      * facts * proof_method list * string
+  type label = Sledgehammer_Proof_Methods.label
+  type facts = Sledgehammer_Proof_Methods.facts
+  type isar_proof = Sledgehammer_Proof_Methods.isar_proof
+  type isar_step = Sledgehammer_Proof_Methods.isar_step
 
   val no_label : label
 
@@ -48,7 +40,7 @@ sig
   val relabel_isar_proof_nicely : isar_proof -> isar_proof
   val rationalize_obtains_in_isar_proofs : Proof.context -> isar_proof -> isar_proof
 
-  val string_of_isar_proof : Proof.context -> int -> int -> isar_proof -> string
+  val string_of_isar_proof : Proof.context -> int -> int -> isar_proof -> int option -> string
 end;
 
 structure Sledgehammer_Isar_Proof : SLEDGEHAMMER_ISAR_PROOF =
@@ -61,18 +53,6 @@ open ATP_Proof_Reconstruct
 open Sledgehammer_Util
 open Sledgehammer_Proof_Methods
 open Sledgehammer_Isar_Annotate
-
-type label = string * int
-type facts = label list * string list (* local and global facts *)
-
-datatype isar_qualifier = Show | Then
-
-datatype isar_proof =
-  Proof of (string * typ) list * (label * term) list * isar_step list
-and isar_step =
-  Let of term * term |
-  Prove of isar_qualifier list * (string * typ) list * label * term * isar_proof list
-    * facts * proof_method list * string
 
 val no_label = ("", ~1)
 
@@ -265,7 +245,7 @@ fun is_thesis ctxt t =
 
 val indent_size = 2
 
-fun string_of_isar_proof ctxt0 i n proof =
+fun string_of_isar_proof ctxt0 i n proof skip_prefer =
   let
     val keywords = Thy_Header.get_keywords' ctxt0
 
@@ -371,9 +351,10 @@ fun string_of_isar_proof ctxt0 i n proof =
       |> add_steps ind steps
       |> fst
   in
-    (if i <> 1 then "prefer " ^ string_of_int i ^ "\n" else "") ^
+    (if i = 1 orelse is_some skip_prefer then "" else "prefer " ^ string_of_int i ^ "\n") ^
     of_indent 0 ^ "proof -\n" ^ of_proof 1 ctxt proof ^
-    of_indent 0 ^ (if n = 1 then "qed" else "next")
+    of_indent 0 ^ (if n = 1 orelse i = n andalso case skip_prefer of SOME 0 => true | _ => false
+                   then "qed" else "next")
   end
 
 end;
